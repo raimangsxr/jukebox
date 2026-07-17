@@ -10,9 +10,9 @@ permissions:
   actions: read
 
 env:
-  APP_NAME: bull
-  BACKEND_IMAGE: bull-backend
-  FRONTEND_IMAGE: bull-frontend
+  APP_NAME: jukebox
+  BACKEND_IMAGE: jukebox-backend
+  FRONTEND_IMAGE: jukebox-frontend
 
 jobs:
   open-bump-pr:
