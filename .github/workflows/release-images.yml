@@ -9,9 +9,9 @@ permissions:
   packages: read
 
 env:
-  APP_NAME: jukebox
-  BACKEND_IMAGE: jukebox-backend
-  FRONTEND_IMAGE: jukebox-frontend
+  APP_NAME: bull
+  BACKEND_IMAGE: bull-backend
+  FRONTEND_IMAGE: bull-frontend
 
 jobs:
   build-and-push:
@@ -44,10 +44,7 @@ jobs:
         run: npm --prefix frontend ci
 
       - name: Run frontend tests
-        run: npm --prefix frontend run test
-
-      - name: Build frontend production bundle
-        run: npm --prefix frontend run build
+        run: npm --prefix frontend run test -- --watch=false --browsers=ChromeHeadless
 
       - name: Validate migrations import
         run: alembic -c backend/alembic.ini current || true
@@ -89,3 +86,13 @@ jobs:
             NGINX_IMAGE=nginxinc/nginx-unprivileged:1.27-alpine
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Publish release tag artifact
+        run: |
+          mkdir -p release-info
+          echo "${{ github.event.release.tag_name }}" > release-info/tag.txt
+      - name: Upload release tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-tag
+          path: release-info/tag.txt
