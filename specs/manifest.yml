@@ -1,0 +1,39 @@
+project: jukebox
+
+contracts:
+  - id: backend-api
+    path: specs/contracts/backend-api/contract.md
+    status: active
+    description: FastAPI + Alembic + PostgreSQL service. Operator auth, embed tokens (002), health, bootstrap.
+  - id: app-core
+    path: specs/contracts/app-core/contract.md
+    status: active
+    description: Angular 22 SPA. Auth guards, login, tokens panel, display embed errors (002).
+  - id: ops-platform
+    path: specs/contracts/ops-platform/contract.md
+    status: active
+    description: Compose, Docker images, CI release workflow, K8s manifests, compose smoke script.
+
+changes:
+  - id: 001-foundation-jukebox
+    path: specs/changes/001-foundation-jukebox/
+    status: implemented
+    contract: backend-api
+    description: Monorepo scaffold, health API, placeholder routes, compose/Docker/CI.
+
+  - id: 002-operator-auth-embed-tokens
+    path: specs/changes/002-operator-auth-embed-tokens/
+    status: implemented
+    contract: backend-api
+    description: Session-based operator login, revocable embed tokens, iframe token exchange, Angular auth guards and admin token UI.
+
+  - id: 003-kubernetes-manifests
+    path: specs/changes/003-kubernetes-manifests/
+    status: implemented
+    contract: ops-platform
+    description: Kubernetes manifests (deploy/k8s) mirroring argocd-apps/bull pattern; ArgoCD-ready.
+
+active:
+  change: null
+  contract: specs/contracts/ops-platform/contract.md
+  context_pack: null

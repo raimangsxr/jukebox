@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --jukebox-bg-deep: #0f172a;
+  --jukebox-bg-surface: #1e293b;
+  --jukebox-accent: #a855f7;
+  --jukebox-text-primary: #f8fafc;
+  --jukebox-text-muted: #94a3b8;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--jukebox-bg-deep);
+  color: var(--jukebox-text-primary);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}

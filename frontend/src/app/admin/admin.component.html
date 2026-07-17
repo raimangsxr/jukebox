@@ -1,0 +1,120 @@
+<main class="mx-auto min-h-screen max-w-4xl space-y-6 p-4 md:p-6">
+  <header class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <p class="text-xs uppercase tracking-[0.2em] text-jukebox-muted">Administración</p>
+      <h1 class="text-2xl font-bold">Moderación y configuración</h1>
+    </div>
+    <button
+      type="button"
+      class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
+      (click)="logout()"
+      [disabled]="loggingOut"
+    >
+      {{ loggingOut ? 'Saliendo…' : 'Cerrar sesión' }}
+    </button>
+  </header>
+
+  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+    <h2 class="mb-2 font-semibold">Moderación</h2>
+    <p class="text-sm text-jukebox-muted">
+      Cola de canciones pendientes de aprobación con enlace a YouTube (próximamente).
+    </p>
+  </section>
+
+  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+    <h2 class="mb-2 font-semibold">Evento</h2>
+    <p class="text-sm text-jukebox-muted">Nombre, subtítulo y altura del display (próximamente).</p>
+  </section>
+
+  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+    <h2 class="mb-2 font-semibold">Tokens de iframe</h2>
+    <p class="mb-4 text-sm text-jukebox-muted">
+      Crea un token para embeber la app en kiosk-screen mediante
+      <code class="rounded bg-jukebox-deep px-1">?token=&lt;plaintext&gt;</code>.
+      El token solo se mostrará una vez al crearlo.
+    </p>
+
+    <p *ngIf="tokenError" class="mb-4 text-sm text-red-400">{{ tokenError }}</p>
+
+    <div
+      *ngIf="revealedToken"
+      class="mb-4 rounded-lg border border-jukebox-accent/40 bg-jukebox-deep p-4"
+    >
+      <p class="mb-2 text-sm font-medium text-jukebox-primary">
+        Esta es la única vez que verás este token. Cópialo ahora.
+      </p>
+      <p class="mb-3 break-all font-mono text-xs text-jukebox-muted">{{ revealedToken.token }}</p>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white"
+          (click)="copyRevealedToken()"
+        >
+          {{ copied ? 'Copiado' : 'Copiar token' }}
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-white/20 px-3 py-1.5 text-sm"
+          (click)="dismissRevealedToken()"
+        >
+          Entendido
+        </button>
+      </div>
+    </div>
+
+    <form class="mb-4 flex flex-wrap gap-2" (ngSubmit)="createToken(); $event.preventDefault()">
+      <input
+        class="min-w-[12rem] flex-1 rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2 text-sm"
+        type="text"
+        placeholder="Etiqueta (ej. Kiosk sala)"
+        [(ngModel)]="newLabel"
+        name="newLabel"
+        maxlength="64"
+      />
+      <button
+        type="submit"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="creating"
+      >
+        {{ creating ? 'Creando…' : 'Crear token' }}
+      </button>
+    </form>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-4">Etiqueta</th>
+            <th class="pb-2 pr-4">Creado</th>
+            <th class="pb-2 pr-4">Estado</th>
+            <th class="pb-2">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let t of tokens" class="border-t border-white/10">
+            <td class="py-2 pr-4">{{ t.label }}</td>
+            <td class="py-2 pr-4 text-jukebox-muted">{{ t.created_at | date: 'short' }}</td>
+            <td class="py-2 pr-4">
+              <span [class.text-green-400]="isActive(t)" [class.text-jukebox-muted]="!isActive(t)">
+                {{ isActive(t) ? 'Activo' : 'Revocado' }}
+              </span>
+            </td>
+            <td class="py-2">
+              <button
+                *ngIf="isActive(t)"
+                type="button"
+                class="text-sm text-red-400 hover:underline"
+                (click)="revokeToken(t.id)"
+              >
+                Revocar
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="tokens.length === 0">
+            <td colspan="4" class="py-4 text-center text-jukebox-muted">No hay tokens todavía.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
