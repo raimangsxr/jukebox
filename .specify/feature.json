@@ -1,5 +1,3 @@
 {
-  "feature_directory": "specs/changes/003-kubernetes-manifests",
-  "branch": "003-kubernetes-manifests",
-  "spec": "003-kubernetes-manifests"
+  "feature_directory": "specs/changes/008-youtube-text-search"
 }

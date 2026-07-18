@@ -5,11 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from .bootstrap import ensure_event_config, ensure_operator
+from .bootstrap import ensure_event_config, ensure_jukebox_runtime, ensure_operator
 from .config import get_settings
 from .database import SessionLocal
 from .middleware import FrameAncestorsMiddleware
-from .routers import auth, health, tokens
+from .routers import auth, auth_google, health, participant, queue, state, tokens, votes, youtube
 
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
             password=settings.operator_password,
         )
         ensure_event_config(db)
+        ensure_jukebox_runtime(db)
     except ValueError as exc:
         logger.error("Bootstrap failed: %s", exc)
         raise
@@ -61,7 +62,13 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(auth_google.router)
     app.include_router(tokens.router)
+    app.include_router(state.router)
+    app.include_router(queue.router)
+    app.include_router(participant.router)
+    app.include_router(votes.router)
+    app.include_router(youtube.router)
 
     return app
 

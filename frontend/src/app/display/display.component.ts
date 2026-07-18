@@ -1,19 +1,34 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+  inject,
+} from '@angular/core';
 
 import { AuthService } from '../services/auth.service';
+import { DisplayStateService } from '../services/display-state.service';
+import { QrPanelComponent } from './qr-panel.component';
+import { QueueStripComponent } from './queue-strip.component';
+import { YoutubePlayerComponent } from './youtube-player.component';
 
 @Component({
   selector: 'app-display',
   standalone: true,
-  imports: [CommonModule],
-  changeDetection: ChangeDetectionStrategy.Default,
+  imports: [
+    CommonModule,
+    YoutubePlayerComponent,
+    QrPanelComponent,
+    QueueStripComponent,
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './display.component.html',
-  styleUrl: './display.component.css'
+  styleUrl: './display.component.css',
 })
-export class DisplayComponent {
+export class DisplayComponent implements OnInit {
 
   private readonly auth = inject(AuthService);
+  readonly displayState = inject(DisplayStateService);
 
   get displayError(): string | null {
     const err = this.auth.getDisplayError();
@@ -28,5 +43,15 @@ export class DisplayComponent {
 
   get showContent(): boolean {
     return !this.displayError && this.auth.isAuthenticated();
+  }
+
+  ngOnInit(): void {
+    if (this.showContent) {
+      void this.displayState.start();
+    }
+  }
+
+  onVideoEnded(): void {
+    void this.displayState.advancePlayback();
   }
 }

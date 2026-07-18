@@ -9,7 +9,9 @@ from .models import (
     EVENT_CONFIG_DEFAULT_SUBTITLE,
     EVENT_CONFIG_DEFAULT_THEME,
     EVENT_CONFIG_SINGLETON_ID,
+    JUKEBOX_RUNTIME_SINGLETON_ID,
     EventConfig,
+    JukeboxRuntime,
     User,
 )
 from .security import hash_password
@@ -61,4 +63,19 @@ def ensure_event_config(db: Session) -> bool:
     db.commit()
     db.refresh(row)
     logger.info("Seeded event config row (id=%s)", row.id)
+    return True
+
+
+def ensure_jukebox_runtime(db: Session) -> bool:
+    """Idempotently create the singleton jukebox_runtime row."""
+    existing = db.get(JukeboxRuntime, JUKEBOX_RUNTIME_SINGLETON_ID)
+    if existing is not None:
+        logger.info("Jukebox runtime row already exists")
+        return False
+
+    row = JukeboxRuntime(id=JUKEBOX_RUNTIME_SINGLETON_ID, revision=0)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    logger.info("Seeded jukebox runtime row (id=%s)", row.id)
     return True

@@ -12,10 +12,9 @@
 
 ## Active SDD work
 
-- Active change: **002-operator-auth-embed-tokens**
-- Context pack: `specs/changes/002-operator-auth-embed-tokens/context-pack.md`
-- SDD gates: specify ✅ clarify ✅ checklist ✅ plan ✅ tasks ✅ analyze ✅
-- **Next**: `/speckit.implement`
+No active change. Last completed: **008-youtube-text-search** (implemented).
+
+To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 
 ## Suggested flow
 

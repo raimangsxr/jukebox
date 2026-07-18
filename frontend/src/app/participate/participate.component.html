@@ -1,17 +1,212 @@
-<main class="mx-auto flex min-h-screen max-w-lg flex-col gap-6 p-4">
+<main class="participate-main mx-auto flex min-h-screen max-w-lg flex-col gap-6 p-4">
   <header>
     <p class="text-xs uppercase tracking-[0.2em] text-jukebox-muted">Participa</p>
-    <h1 class="text-2xl font-bold">Envía y vota canciones</h1>
+    <h1 class="text-2xl font-bold">Vota la cola</h1>
+    @if (authenticated && participant) {
+      <div class="mt-3 flex items-center gap-3">
+        @if (participant.avatar_url) {
+          <img
+            [src]="participant.avatar_url"
+            alt=""
+            class="h-10 w-10 rounded-full border border-white/10"
+          />
+        }
+        <div>
+          <p class="font-medium">{{ participant.display_name }}</p>
+          @if (state) {
+            <p class="text-sm text-jukebox-accent">{{ votesRemainingLabel() }}</p>
+          }
+        </div>
+      </div>
+    }
   </header>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
-    <p class="text-sm text-jukebox-muted">
-      Inicio de sesión con Google, envío de enlaces de YouTube y votación (próximamente).
-    </p>
-  </section>
+  @if (loading) {
+    <p class="text-sm text-jukebox-muted">Cargando…</p>
+  } @else if (!authenticated) {
+    <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+      <p class="text-sm text-jukebox-muted">
+        Inicia sesión para votar y enviar canciones al evento.
+      </p>
+      <button
+        type="button"
+        class="mt-4 w-full rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white"
+        (click)="signInGoogle()"
+      >
+        Iniciar sesión con Google
+      </button>
+      @if (showDevAuth) {
+        <button
+          type="button"
+          class="mt-2 w-full rounded-lg border border-white/20 px-4 py-2 text-sm text-jukebox-muted"
+          (click)="signInDev()"
+        >
+          Entrar como participante (dev)
+        </button>
+      }
+    </section>
 
-  <section class="rounded-xl border border-dashed border-white/15 p-4">
-    <h2 class="mb-2 text-sm font-semibold">Mis canciones</h2>
-    <p class="text-sm text-jukebox-muted">Sin envíos todavía.</p>
-  </section>
+    <section class="rounded-xl border border-dashed border-white/10 p-4 opacity-60">
+      <p class="text-sm text-jukebox-muted">Envío de canciones y votación disponibles tras iniciar sesión.</p>
+    </section>
+  } @else {
+    @if (errorMessage) {
+      <p class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        {{ errorMessage }}
+      </p>
+    }
+
+    <section
+      class="submit-section rounded-xl border bg-jukebox-surface p-4"
+      [class.submit-section--active]="isSearchSectionActive()"
+      [class.border-white/10]="!isSearchSectionActive()"
+    >
+      <h2 class="mb-2 text-sm font-semibold">Buscar en YouTube</h2>
+      @if (!searchEnabled) {
+        <p class="text-sm text-jukebox-muted">
+          Búsqueda no disponible en este evento. Puedes pegar un enlace de YouTube.
+        </p>
+      } @else {
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="search"
+            class="min-w-0 flex-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm"
+            placeholder="Título o artista"
+            [(ngModel)]="searchQuery"
+            [disabled]="searchLoading || submitting"
+            (keydown)="onSearchKeydown($event)"
+          />
+          <button
+            type="button"
+            class="shrink-0 rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            [disabled]="searchLoading || submitting"
+            (click)="runSearch()"
+          >
+            Buscar
+          </button>
+        </div>
+
+        @if (searchLoading) {
+          <p class="mt-3 text-sm text-jukebox-muted">Buscando…</p>
+        }
+
+        @if (searchMessage) {
+          <p class="mt-3 text-sm text-jukebox-muted">{{ searchMessage }}</p>
+        }
+
+        @if (searchResults.length) {
+          <ul class="mt-3 flex flex-col gap-2">
+            @for (result of searchResults; track result.youtube_video_id) {
+              <li>
+                <button
+                  type="button"
+                  class="search-result-row flex w-full items-center gap-3 rounded-lg border border-white/10 bg-black/20 p-2 text-left"
+                  [class.search-result-row--selected]="
+                    selectedResult?.youtube_video_id === result.youtube_video_id
+                  "
+                  (click)="selectSearchResult(result)"
+                >
+                  <img
+                    [src]="result.thumbnail_url"
+                    [alt]="result.title"
+                    class="h-12 w-16 shrink-0 rounded object-cover"
+                  />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-medium">{{ result.title }}</span>
+                    <span class="block truncate text-xs text-jukebox-muted">{{
+                      result.channel_title
+                    }}</span>
+                  </span>
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      }
+    </section>
+
+    <section
+      class="submit-section rounded-xl border bg-jukebox-surface p-4"
+      [class.submit-section--active]="isUrlSectionActive()"
+      [class.border-white/10]="!isUrlSectionActive()"
+    >
+      <h2 class="mb-2 text-sm font-semibold">Pegar enlace</h2>
+      <input
+        type="url"
+        class="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm"
+        placeholder="Enlace de YouTube"
+        [ngModel]="submitUrl"
+        (ngModelChange)="onUrlModelChange($event)"
+        (focus)="onUrlFocus()"
+        [disabled]="submitting"
+      />
+    </section>
+
+    <section class="flex flex-col gap-2">
+      <h2 class="text-sm font-semibold">Mis canciones</h2>
+      @if (!submissions.length) {
+        <p class="text-sm text-jukebox-muted">Aún no has enviado ninguna canción.</p>
+      } @else {
+        <ul class="flex flex-col gap-2">
+          @for (entry of submissions; track entry.id) {
+            <li class="rounded-xl border border-white/10 bg-jukebox-surface p-3">
+              <p class="truncate font-medium">{{ entry.title }}</p>
+              <p class="mt-1 text-xs text-jukebox-accent">{{ statusLabel(entry.status) }}</p>
+              @if (entry.status === 'rejected' && entry.rejection_reason) {
+                <p class="mt-1 text-xs text-jukebox-muted">{{ entry.rejection_reason }}</p>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    @if (state?.now_playing; as playing) {
+      <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+        <h2 class="mb-1 text-xs uppercase tracking-wide text-jukebox-muted">Sonando ahora</h2>
+        <p class="font-medium">{{ playing.title }}</p>
+      </section>
+    }
+
+    <section class="flex flex-col gap-2">
+      <h2 class="text-sm font-semibold">Cola votable</h2>
+      @if (!state?.queue?.length) {
+        <p class="text-sm text-jukebox-muted">No hay canciones en cola todavía.</p>
+      } @else {
+        <ul class="flex flex-col gap-2">
+          @for (entry of state!.queue; track entry.id) {
+            <li class="flex items-center gap-3 rounded-xl border border-white/10 bg-jukebox-surface p-3">
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium">{{ entry.title }}</p>
+                <p class="text-xs text-jukebox-muted">{{ entry.vote_count }} votos</p>
+              </div>
+              <button
+                type="button"
+                class="shrink-0 rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+                [disabled]="(state?.votes_remaining ?? 0) === 0 || votingEntryId === entry.id"
+                (click)="vote(entry)"
+              >
+                Votar
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <footer class="submit-footer">
+      <button
+        type="button"
+        class="w-full rounded-lg bg-jukebox-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
+        [disabled]="!canSubmit()"
+        (click)="submitSong()"
+      >
+        Enviar canción
+      </button>
+    </footer>
+  }
+
+  @if (authenticated) {
+    <app-notification-toast />
+  }
 </main>
