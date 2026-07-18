@@ -7,13 +7,15 @@ from sqlalchemy.orm import Session
 
 from ..models import (
     MAX_QUEUED_ENTRIES,
+    Participant,
     QueueEntry,
     QueueEntryStatus,
 )
-from ..schemas import QueueEntryRead, StateResponse
+from ..schemas import PendingQueueEntryRead, QueueEntryRead, StateResponse
 from .notification_service import emit_song_approved, emit_song_up_next
 from .state_service import build_state_response, bump_revision, get_now_playing, get_or_create_runtime
 from .youtube_meta import (
+    fetch_youtube_duration_sec,
     fetch_youtube_metadata,
     fetch_youtube_metadata_strict,
     parse_youtube_video_id,
@@ -89,6 +91,36 @@ def list_pending(db: Session) -> list[QueueEntry]:
     )
 
 
+def list_pending_for_moderation(db: Session) -> list[PendingQueueEntryRead]:
+    entries = list_pending(db)
+    if not entries:
+        return []
+
+    participant_ids = {
+        entry.submitted_by_participant_id
+        for entry in entries
+        if entry.submitted_by_participant_id
+    }
+    names_by_id: dict[str, str] = {}
+    if participant_ids:
+        participants = db.execute(
+            select(Participant).where(Participant.id.in_(participant_ids))
+        ).scalars().all()
+        names_by_id = {participant.id: participant.display_name for participant in participants}
+
+    return [
+        PendingQueueEntryRead(
+            **QueueEntryRead.model_validate(entry).model_dump(),
+            submitted_by_display_name=(
+                names_by_id.get(entry.submitted_by_participant_id)
+                if entry.submitted_by_participant_id
+                else None
+            ),
+        )
+        for entry in entries
+    ]
+
+
 def create_pending_entry(db: Session, youtube_url_or_id: str) -> QueueEntry:
     video_id = parse_youtube_video_id(youtube_url_or_id)
     if not video_id:
@@ -107,6 +139,7 @@ def create_pending_entry(db: Session, youtube_url_or_id: str) -> QueueEntry:
         youtube_video_id=video_id,
         title=title,
         thumbnail_url=thumbnail,
+        duration_sec=fetch_youtube_duration_sec(video_id),
         status=QueueEntryStatus.pending_review,
         original_query=youtube_url_or_id.strip(),
         vote_count=0,
@@ -197,6 +230,7 @@ def submit_as_participant(
         youtube_video_id=video_id,
         title=title,
         thumbnail_url=thumbnail,
+        duration_sec=fetch_youtube_duration_sec(video_id),
         status=QueueEntryStatus.pending_review,
         original_query=original_query,
         vote_count=0,

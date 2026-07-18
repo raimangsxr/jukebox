@@ -109,6 +109,8 @@ Participant session MUST NOT access operator routes (e.g. `POST /api/queue/skip`
 
 `POST /api/queue/submit` body: `{ "youtube_url_or_id": string, "search_query"?: string }`. Creates `pending_review` with `submitted_by_participant_id`; bumps `revision`. When `search_query` is non-empty after trim, `original_query` = `search:{search_query}`; otherwise stores URL/id string (006).
 
+`PendingListResponse.entries[]` uses `PendingQueueEntryRead`: `QueueEntryRead` plus `submitted_by_display_name` (participant display name when linked). `QueueEntryRead.duration_sec` is populated on submit via YouTube Data API when `JUKEBOX_YOUTUBE_API_KEYS` is configured; otherwise `null`.
+
 ## YouTube search (008)
 
 | Method | Path | Auth | Response |

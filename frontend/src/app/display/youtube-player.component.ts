@@ -9,6 +9,12 @@ import {
   SimpleChanges,
 } from '@angular/core';
 
+type YtPlayer = {
+  loadVideoById: (id: string) => void;
+  playVideo: () => void;
+  destroy: () => void;
+};
+
 declare global {
   interface Window {
     YT?: {
@@ -17,9 +23,12 @@ declare global {
         options: {
           videoId?: string;
           playerVars?: Record<string, number | string>;
-          events?: { onStateChange?: (event: { data: number }) => void };
+          events?: {
+            onReady?: () => void;
+            onStateChange?: (event: { data: number }) => void;
+          };
         }
-      ) => { loadVideoById: (id: string) => void; destroy: () => void };
+      ) => YtPlayer;
       PlayerState: { ENDED: number };
     };
     onYouTubeIframeAPIReady?: () => void;
@@ -35,15 +44,18 @@ const YT_ENDED = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex h-full flex-col overflow-hidden rounded-xl border border-white/10 bg-jukebox-surface">
-      <div *ngIf="videoId; else idle" class="relative min-h-0 flex-1">
+      <div class="relative min-h-0 flex-1">
+        <div
+          *ngIf="!videoId"
+          class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-jukebox-surface p-6 text-center"
+        >
+          <p class="text-sm text-jukebox-muted">Esperando canción</p>
+          <p class="mt-2 text-lg font-semibold">
+            La reproducción comenzará cuando el moderador inicie la cola
+          </p>
+        </div>
         <div [id]="playerElementId" class="h-full w-full"></div>
       </div>
-      <ng-template #idle>
-        <div class="flex flex-1 flex-col items-center justify-center p-6 text-center">
-          <p class="text-sm text-jukebox-muted">Esperando canción</p>
-          <p class="mt-2 text-lg font-semibold">La reproducción comenzará cuando el moderador inicie la cola</p>
-        </div>
-      </ng-template>
       <div *ngIf="title" class="border-t border-white/10 px-3 py-2">
         <p class="truncate text-sm font-medium">{{ title }}</p>
       </div>
@@ -58,7 +70,7 @@ export class YoutubePlayerComponent implements OnChanges {
 
   readonly playerElementId = `yt-player-${Math.random().toString(36).slice(2)}`;
 
-  private player: { loadVideoById: (id: string) => void; destroy: () => void } | null = null;
+  private player: YtPlayer | null = null;
   private apiReady = false;
   private pendingVideoId: string | null = null;
 
@@ -74,11 +86,29 @@ export class YoutubePlayerComponent implements OnChanges {
       return;
     }
     await this.ensureApi();
+    await this.waitForPlayerElement();
+    if (!this.videoId) {
+      return;
+    }
     if (!this.player) {
       this.createPlayer(this.videoId);
       return;
     }
     this.player.loadVideoById(this.videoId);
+    this.player.playVideo();
+  }
+
+  private waitForPlayerElement(): Promise<void> {
+    return new Promise(resolve => {
+      const check = () => {
+        if (document.getElementById(this.playerElementId)) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      requestAnimationFrame(check);
+    });
   }
 
   private ensureApi(): Promise<void> {
@@ -105,7 +135,7 @@ export class YoutubePlayerComponent implements OnChanges {
         this.apiReady = true;
         resolve();
         if (this.pendingVideoId) {
-          this.createPlayer(this.pendingVideoId);
+          void this.syncVideo();
           this.pendingVideoId = null;
         }
       };
@@ -114,6 +144,10 @@ export class YoutubePlayerComponent implements OnChanges {
 
   private createPlayer(videoId: string): void {
     if (!window.YT?.Player) {
+      this.pendingVideoId = videoId;
+      return;
+    }
+    if (!document.getElementById(this.playerElementId)) {
       this.pendingVideoId = videoId;
       return;
     }
@@ -126,6 +160,9 @@ export class YoutubePlayerComponent implements OnChanges {
         modestbranding: 1,
       },
       events: {
+        onReady: () => {
+          this.player?.playVideo();
+        },
         onStateChange: (event: { data: number }) => {
           if (event.data === YT_ENDED) {
             this.ended.emit();

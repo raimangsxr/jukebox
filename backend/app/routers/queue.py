@@ -23,10 +23,8 @@ def get_pending(
     _user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> PendingListResponse:
-    entries = queue_service.list_pending(db)
-    return PendingListResponse(
-        entries=[QueueEntryRead.model_validate(e) for e in entries]
-    )
+    entries = queue_service.list_pending_for_moderation(db)
+    return PendingListResponse(entries=entries)
 
 
 @router.post("/{entry_id}/approve", response_model=QueueEntryRead)

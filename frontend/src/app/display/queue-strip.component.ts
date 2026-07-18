@@ -10,7 +10,12 @@ import { QueueEntryRead } from '../models/jukebox-state';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex h-full flex-col rounded-xl border border-white/10 bg-jukebox-surface px-3 py-2">
-      <p class="mb-1 text-xs uppercase tracking-[0.15em] text-jukebox-muted">Próximas canciones</p>
+      <div class="mb-1 shrink-0">
+        <p class="text-xs font-semibold uppercase tracking-[0.12em] text-jukebox-primary">
+          Próximas canciones y votos en cada una
+        </p>
+        <p class="text-[10px] text-jukebox-muted">El número en cada tarjeta es el total de votos</p>
+      </div>
       <div *ngIf="entries.length; else empty" class="flex min-h-0 flex-1 items-center gap-3 overflow-x-auto">
         <div
           *ngFor="let entry of entries"
@@ -25,7 +30,10 @@ import { QueueEntryRead } from '../models/jukebox-state';
           <div class="min-w-0 flex-1">
             <p class="truncate text-xs font-medium">{{ entry.title }}</p>
           </div>
-          <span class="shrink-0 rounded-full bg-jukebox-accent/20 px-2 py-0.5 text-xs font-semibold text-jukebox-primary">
+          <span
+            class="shrink-0 rounded-full bg-jukebox-accent/25 px-2 py-0.5 text-xs font-bold text-jukebox-accent"
+            [attr.aria-label]="'Votos: ' + entry.vote_count"
+          >
             {{ entry.vote_count }}
           </span>
         </div>

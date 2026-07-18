@@ -16,6 +16,32 @@ def test_pending_list(authed_client, pending_entry):
     entries = response.json()["entries"]
     assert len(entries) == 1
     assert entries[0]["id"] == pending_entry.id
+    assert entries[0]["duration_sec"] is None
+    assert entries[0]["submitted_by_display_name"] is None
+
+
+def test_pending_list_includes_submitter_and_duration(
+    authed_client, db_session, sample_video_id, participant
+):
+    entry = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id=sample_video_id,
+        title="Participant Song",
+        thumbnail_url=f"https://i.ytimg.com/vi/{sample_video_id}/hqdefault.jpg",
+        duration_sec=213,
+        status=QueueEntryStatus.pending_review,
+        original_query=sample_video_id,
+        submitted_by_participant_id=participant.id,
+    )
+    db_session.add(entry)
+    db_session.commit()
+
+    response = authed_client.get("/api/queue/pending")
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    assert len(entries) == 1
+    assert entries[0]["duration_sec"] == 213
+    assert entries[0]["submitted_by_display_name"] == participant.display_name
 
 
 def test_approve_pending(authed_client, pending_entry):

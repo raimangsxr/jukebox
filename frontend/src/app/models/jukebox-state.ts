@@ -15,7 +15,12 @@ export interface QueueEntryRead {
   position: number | null;
   status: string;
   rejection_reason?: string | null;
+  duration_sec?: number | null;
   created_at: string;
+}
+
+export interface PendingQueueEntryRead extends QueueEntryRead {
+  submitted_by_display_name?: string | null;
 }
 
 export interface StateResponse {
@@ -39,5 +44,5 @@ export interface NotificationEventRead {
 }
 
 export interface PendingListResponse {
-  entries: QueueEntryRead[];
+  entries: PendingQueueEntryRead[];
 }

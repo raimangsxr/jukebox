@@ -4,16 +4,18 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  OnDestroy,
   OnInit,
   inject,
   signal
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { AuthService } from '../services/auth.service';
-import { QueueEntryRead } from '../models/jukebox-state';
+import { PendingQueueEntryRead } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
 import { QueueAdminService } from '../services/queue-admin.service';
 
@@ -45,7 +47,7 @@ interface TokenListResponse {
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css'
 })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, OnDestroy {
 
   private readonly baseUrl = environment.apiBaseUrl;
   private readonly http = inject(HttpClient);
@@ -56,7 +58,7 @@ export class AdminComponent implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
 
   tokens: ApiTokenRead[] = [];
-  readonly pending = signal<QueueEntryRead[]>([]);
+  readonly pending = signal<PendingQueueEntryRead[]>([]);
   newLabel = '';
   creating = false;
   revealedToken: ApiTokenWithSecret | null = null;
@@ -66,11 +68,20 @@ export class AdminComponent implements OnInit {
   loggingOut = false;
   moderationBusy = false;
   rejectReasons: Record<string, string> = {};
+  private stateSubscription: Subscription | null = null;
 
   ngOnInit(): void {
     this.refreshTokens();
-    this.refreshPending();
-    void this.displayState.refresh();
+    void this.displayState.start();
+    this.stateSubscription = this.displayState.state$.subscribe(() => {
+      this.refreshPending();
+      this.cdr.markForCheck();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.stateSubscription?.unsubscribe();
+    this.displayState.stop();
   }
 
   get canStartPlayback(): boolean {
@@ -132,12 +143,11 @@ export class AdminComponent implements OnInit {
     this.queueAdmin.approve(id).subscribe({
       next: () => {
         this.moderationBusy = false;
-        this.refreshPending();
-        void this.displayState.refresh();
       },
       error: err => {
         this.moderationBusy = false;
         this.moderationError = this.mapQueueError(err);
+        this.cdr.markForCheck();
       }
     });
   }
@@ -147,12 +157,11 @@ export class AdminComponent implements OnInit {
     this.queueAdmin.reject(id, this.rejectReasons[id]).subscribe({
       next: () => {
         this.moderationBusy = false;
-        this.refreshPending();
-        void this.displayState.refresh();
       },
       error: err => {
         this.moderationBusy = false;
         this.moderationError = this.mapQueueError(err);
+        this.cdr.markForCheck();
       }
     });
   }
@@ -163,16 +172,31 @@ export class AdminComponent implements OnInit {
       next: state => {
         this.moderationBusy = false;
         this.displayState.applyState(state);
+        this.cdr.markForCheck();
       },
       error: err => {
         this.moderationBusy = false;
         this.moderationError = this.mapQueueError(err);
+        this.cdr.markForCheck();
       }
     });
   }
 
   youtubeUrl(videoId: string): string {
     return `https://www.youtube.com/watch?v=${videoId}`;
+  }
+
+  formatDuration(durationSec: number | null | undefined): string {
+    if (durationSec == null || durationSec < 0) {
+      return '—';
+    }
+    const minutes = Math.floor(durationSec / 60);
+    const seconds = durationSec % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  submitterLabel(entry: PendingQueueEntryRead): string {
+    return entry.submitted_by_display_name?.trim() || '—';
   }
 
   createToken(): void {

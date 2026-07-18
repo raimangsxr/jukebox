@@ -69,7 +69,12 @@ class QueueEntryRead(BaseModel):
     position: int | None = None
     status: str
     rejection_reason: str | None = None
+    duration_sec: int | None = None
     created_at: datetime
+
+
+class PendingQueueEntryRead(QueueEntryRead):
+    submitted_by_display_name: str | None = None
 
 
 class StateResponse(BaseModel):
@@ -80,7 +85,7 @@ class StateResponse(BaseModel):
 
 
 class PendingListResponse(BaseModel):
-    entries: list[QueueEntryRead]
+    entries: list[PendingQueueEntryRead]
 
 
 class RejectBody(BaseModel):
