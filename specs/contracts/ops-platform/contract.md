@@ -94,6 +94,7 @@ Seven core manifests + README in `deploy/k8s/`:
 | `JUKEBOX_SESSION_SECRET` | Long random hex |
 | `JUKEBOX_GOOGLE_CLIENT_ID` | Google OAuth Web client id |
 | `JUKEBOX_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `JUKEBOX_YOUTUBE_API_KEYS` | Comma-separated YouTube Data API v3 keys (backend only) |
 
 Git-tracked `secret.yaml` uses `REPLACE_ME` placeholders only. Operator applies real values out-of-band.
 

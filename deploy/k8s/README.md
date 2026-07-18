@@ -38,8 +38,16 @@ Canonical manifests for production. Mirror to `argocd-apps/manifests/jukebox/` f
 | `JUKEBOX_SESSION_SECRET` | Random hex string |
 | `JUKEBOX_GOOGLE_CLIENT_ID` | Google Cloud OAuth Web client id |
 | `JUKEBOX_GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client secret |
+| `JUKEBOX_YOUTUBE_API_KEYS` | Comma-separated YouTube Data API v3 keys (enables `/participar` search + song duration) |
 
 Replace `REPLACE_ME` in `secret.yaml` locally before apply, or create the Secret in-cluster with `kubectl create secret generic`.
+
+### YouTube search
+
+1. Enable **YouTube Data API v3** in Google Cloud and create an API key.
+2. Set `JUKEBOX_YOUTUBE_API_KEYS` in `jukebox-secrets` (comma-separated for quota failover).
+3. Restart `jukebox-backend` after updating the secret.
+4. Smoke: `GET /api/youtube/search/config` → `{"enabled":true}`.
 
 ## Deploy order
 
@@ -47,7 +55,7 @@ Replace `REPLACE_ME` in `secret.yaml` locally before apply, or create the Secret
 2. `migration-job.yaml` — wait until Job `jukebox-migrate` is `Complete`
 3. `backend.yaml`, `frontend.yaml`
 4. `ingress.yaml`
-5. Smoke: `/api/health`, login, CSP header
+5. Smoke: `/api/health`, login, CSP header, `GET /api/youtube/search/config`
 
 Full validation steps: `specs/changes/003-kubernetes-manifests/quickstart.md`
 

@@ -100,6 +100,11 @@ spec:
                 secretKeyRef:
                   name: jukebox-secrets
                   key: JUKEBOX_GOOGLE_CLIENT_SECRET
+            - name: JUKEBOX_YOUTUBE_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: jukebox-secrets
+                  key: JUKEBOX_YOUTUBE_API_KEYS
             - name: JUKEBOX_GOOGLE_REDIRECT_URI
               valueFrom:
                 configMapKeyRef:
