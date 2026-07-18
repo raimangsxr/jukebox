@@ -24,11 +24,21 @@ queue_entry_status = sa.Enum(
     "playing",
     "played",
     name="queue_entry_status",
+    native_enum=False,
 )
 
 
+def _drop_orphan_native_enum_if_needed(connection: sa.Connection) -> None:
+    """Drop legacy PG enum from earlier 0003 revisions when upgrade failed mid-flight."""
+    inspector = sa.inspect(connection)
+    if inspector.has_table("queue_entries"):
+        return
+    connection.execute(sa.text("DROP TYPE IF EXISTS queue_entry_status"))
+
+
 def upgrade() -> None:
-    queue_entry_status.create(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    _drop_orphan_native_enum_if_needed(bind)
     op.create_table(
         "queue_entries",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -83,4 +93,3 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_queue_entries_youtube_video_id"), table_name="queue_entries")
     op.drop_index(op.f("ix_queue_entries_status"), table_name="queue_entries")
     op.drop_table("queue_entries")
-    queue_entry_status.drop(op.get_bind(), checkfirst=True)
