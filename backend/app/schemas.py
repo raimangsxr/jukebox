@@ -119,6 +119,7 @@ class ParticipantStateResponse(BaseModel):
     now_playing: QueueEntryRead | None = None
     queue: list[QueueEntryRead]
     votes_remaining: int
+    max_pending_submissions: int
     event_config: EventConfigSummary
 
 

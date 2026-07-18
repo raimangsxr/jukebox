@@ -252,7 +252,10 @@ export class ParticipateComponent implements OnInit, OnDestroy {
       await this.stateService.refreshSubmissions();
     } catch (err: unknown) {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
-      this.errorMessage = this.participantService.mapSubmitError(detail);
+      this.errorMessage = this.participantService.mapSubmitError(
+        detail,
+        this.state?.max_pending_submissions ?? 2
+      );
     } finally {
       this.submitting = false;
       this.cdr.markForCheck();

@@ -8,9 +8,6 @@ import { ParticipantMeResponse } from '../models/participant-state';
 import { SearchConfigResponse, SearchResponse } from '../models/youtube-search';
 
 const SUBMIT_ERROR_MESSAGES: Record<string, string> = {
-  'pending submission limit reached':
-    'Has alcanzado el límite de canciones pendientes (2).',
-  'active song limit reached': 'Ya tienes una canción activa en cola o sonando.',
   'video already in queue':
     'Ese vídeo ya está en la cola o pendiente de revisión.',
   'invalid youtube reference': 'Enlace de YouTube no válido o vídeo no disponible.',
@@ -63,9 +60,12 @@ export class ParticipantService {
     return null;
   }
 
-  mapSubmitError(detail: string | undefined): string {
+  mapSubmitError(detail: string | undefined, maxPending = 2): string {
     if (!detail) {
       return 'No se pudo enviar la canción.';
+    }
+    if (detail === 'pending submission limit reached') {
+      return `Has alcanzado el límite de canciones pendientes (${maxPending}).`;
     }
     return SUBMIT_ERROR_MESSAGES[detail] ?? 'No se pudo enviar la canción.';
   }

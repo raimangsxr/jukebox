@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import (
     EVENT_CONFIG_SINGLETON_ID,
     JUKEBOX_RUNTIME_SINGLETON_ID,
@@ -89,6 +90,7 @@ def build_participant_state_response(
         now_playing=_entry_to_read(now_playing) if now_playing else None,
         queue=[_entry_to_read(e) for e in queue],
         votes_remaining=_votes_remaining(db, participant_id),
+        max_pending_submissions=get_settings().max_pending_submissions_per_participant,
         event_config=EventConfigSummary(
             name=config.name,
             subtitle=config.subtitle,

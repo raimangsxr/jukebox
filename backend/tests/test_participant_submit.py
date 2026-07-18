@@ -90,7 +90,22 @@ def test_submit_pending_limit(dev_participant_client, monkeypatch):
     assert response.json()["detail"] == "pending submission limit reached"
 
 
-def test_submit_active_own_limit(dev_participant_client, monkeypatch, db_session):
+def test_submit_pending_limit_configurable(dev_participant_client, monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setenv("JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT", "1")
+    get_settings.cache_clear()
+    _mock_metadata(monkeypatch)
+    assert _submit(dev_participant_client, "aaaaaaaaaaa").status_code == 201
+    response = _submit(dev_participant_client, "bbbbbbbbbbb")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "pending submission limit reached"
+    get_settings.cache_clear()
+
+
+def test_submit_allowed_with_queued_own_song(
+    dev_participant_client, monkeypatch, db_session
+):
     _mock_metadata(monkeypatch)
     participant_id = dev_participant_client.get("/api/participant/me").json()["participant"]["id"]
     _make_entry(
@@ -100,8 +115,24 @@ def test_submit_active_own_limit(dev_participant_client, monkeypatch, db_session
         participant_id=participant_id,
     )
     response = _submit(dev_participant_client, "ddddddddddd")
-    assert response.status_code == 429
-    assert response.json()["detail"] == "active song limit reached"
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending_review"
+
+
+def test_submit_allowed_with_playing_own_song(
+    dev_participant_client, monkeypatch, db_session
+):
+    _mock_metadata(monkeypatch)
+    participant_id = dev_participant_client.get("/api/participant/me").json()["participant"]["id"]
+    _make_entry(
+        db_session,
+        video_id="9bZkp7q19f0",
+        status=QueueEntryStatus.playing,
+        participant_id=participant_id,
+    )
+    response = _submit(dev_participant_client, "ddddddddddd")
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending_review"
 
 
 def test_submit_duplicate(dev_participant_client, monkeypatch, pending_entry, sample_video_id):

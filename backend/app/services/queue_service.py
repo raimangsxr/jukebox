@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import (
     MAX_QUEUED_ENTRIES,
     Participant,
@@ -164,21 +165,6 @@ def _count_participant_pending(db: Session, participant_id: str) -> int:
     )
 
 
-def _count_participant_active_own(db: Session, participant_id: str) -> int:
-    return (
-        db.execute(
-            select(func.count())
-            .select_from(QueueEntry)
-            .where(
-                QueueEntry.submitted_by_participant_id == participant_id,
-                QueueEntry.status.in_(
-                    (QueueEntryStatus.queued, QueueEntryStatus.playing)
-                ),
-            )
-        ).scalar_one()
-    )
-
-
 def submit_as_participant(
     db: Session,
     participant_id: str,
@@ -193,17 +179,11 @@ def submit_as_participant(
         )
 
     pending_count = _count_participant_pending(db, participant_id)
-    if pending_count >= 2:
+    max_pending = get_settings().max_pending_submissions_per_participant
+    if pending_count >= max_pending:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="pending submission limit reached",
-        )
-
-    active_own = _count_participant_active_own(db, participant_id)
-    if active_own >= 1:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="active song limit reached",
         )
 
     if _has_active_duplicate(db, video_id):
@@ -238,7 +218,7 @@ def submit_as_participant(
     )
     db.add(entry)
     db.flush()
-    if _count_participant_pending(db, participant_id) > 2:
+    if _count_participant_pending(db, participant_id) > max_pending:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

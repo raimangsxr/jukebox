@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     youtube_api_keys: str = ""
     youtube_search_max_results: int = 10
     youtube_search_min_query_length: int = 2
+    max_pending_submissions_per_participant: int = Field(default=2, ge=1)
 
 
 def parse_youtube_api_keys(raw: str) -> list[str]:

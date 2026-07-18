@@ -125,7 +125,8 @@ export class ParticipantStateService implements OnDestroy {
           now_playing: sseState.now_playing,
           queue: sseState.queue,
           event_config: sseState.event_config,
-          votes_remaining: current?.votes_remaining ?? this.votesRemaining
+          votes_remaining: current?.votes_remaining ?? this.votesRemaining,
+          max_pending_submissions: current?.max_pending_submissions ?? 2,
         };
         this.stateSubject.next(merged);
         void this.refreshSubmissions();

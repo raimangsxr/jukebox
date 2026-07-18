@@ -224,7 +224,7 @@ def test_submit_from_search_pending_limit(dev_participant_client, monkeypatch):
     assert response.json()["detail"] == "pending submission limit reached"
 
 
-def test_submit_from_search_active_own_limit(
+def test_submit_from_search_allowed_with_queued_own_song(
     dev_participant_client, monkeypatch, db_session
 ):
     _mock_metadata(monkeypatch)
@@ -242,8 +242,8 @@ def test_submit_from_search_active_own_limit(
     db_session.add(entry)
     db_session.commit()
     response = _submit(dev_participant_client, "ddddddddddd", search_query="new song")
-    assert response.status_code == 429
-    assert response.json()["detail"] == "active song limit reached"
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending_review"
 
 
 def test_submit_from_search_duplicate(

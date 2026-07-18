@@ -59,7 +59,7 @@ Server broadcasts to all SSE subscribers; kiosk/operator clients ignore `notific
 
 No `notification` on reject, vote reorder, or entries without `submitted_by_participant_id`.
 
-`GET /api/participant/state` returns `ParticipantStateResponse` (all `queued` entries + `votes_remaining`). SSE does not include `votes_remaining`; clients merge per participant state snapshot.
+`GET /api/participant/state` returns `ParticipantStateResponse` (all `queued` entries, `votes_remaining`, `max_pending_submissions`). SSE does not include `votes_remaining` or `max_pending_submissions`; clients merge per participant state snapshot.
 
 ## Google OAuth (participant, 006)
 
@@ -142,11 +142,14 @@ API returns stable English `detail` strings; frontend maps to Spanish.
 
 | Case | Status | `detail` |
 |------|--------|----------|
-| Pending limit (2) | 429 | `pending submission limit reached` |
-| Active own queued/playing (1) | 429 | `active song limit reached` |
+| Pending limit | 429 | `pending submission limit reached` |
 | Duplicate active video | 409 | `video already in queue` |
 | Invalid YouTube / metadata failure | 422 | `invalid youtube reference` |
 | Not authenticated | 401 | `not authenticated` |
+
+Participants may submit while they already have songs in `queued` or `playing`; only the pending limit and duplicate-video rules apply.
+
+`JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` (default `2`, min `1`) controls the per-participant `pending_review` cap. `GET /api/participant/state` exposes `max_pending_submissions` for client UX.
 
 `POST /api/queue/skip`: advance when `playing`; start when idle + `queued`; 409 `nothing to advance` when empty.
 
@@ -255,6 +258,7 @@ Extend `participants`: `google_sub` (unique nullable), `email`, `avatar_url`.
 | `JUKEBOX_YOUTUBE_API_KEYS` | Comma-separated YouTube Data API keys (empty disables search UI) |
 | `JUKEBOX_YOUTUBE_SEARCH_MAX_RESULTS` | Max results per search (default 10) |
 | `JUKEBOX_YOUTUBE_SEARCH_MIN_QUERY_LENGTH` | Min query length after trim (default 2) |
+| `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` | Max `pending_review` submissions per participant (default 2, min 1) |
 
 ## Error shape
 
