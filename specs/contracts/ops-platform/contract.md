@@ -40,6 +40,14 @@ Backend services do **not** define Docker HEALTHCHECK (platform standard).
 3. `npm --prefix frontend run build`
 4. Build and push `jukebox-backend` and `jukebox-frontend` to Docker Hub as `rromani/jukebox-*:<release-tag>`
 
+`.github/workflows/bump-app.yml` triggers on successful `Release Images` via `workflow_run`:
+
+1. Downloads the `release-tag` artifact and patches `argocd-apps/manifests/jukebox/{backend,frontend,migration-job}.yaml`
+2. Opens a PR in `raimangsxr/argocd-apps` labeled `jukebox`
+3. Auto-merges minor and hotfix releases (same major version); leaves major bumps open for manual review
+
+Requires repo secret `ARGOCD_APPS_TOKEN` (fine-grained PAT with `Contents: Read and write` on `argocd-apps`).
+
 ## Production routing
 
 - Ingress sends `/api/*` → backend

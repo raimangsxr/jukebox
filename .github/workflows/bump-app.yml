@@ -43,6 +43,16 @@ jobs:
           token: ${{ secrets.ARGOCD_APPS_TOKEN }}
           path: argocd-apps
 
+      - name: Ensure PR label exists in argocd-apps
+        env:
+          GH_TOKEN: ${{ secrets.ARGOCD_APPS_TOKEN }}
+        run: |
+          gh label create "${APP_NAME}" \
+            --repo raimangsxr/argocd-apps \
+            --color "1D76DB" \
+            --description "${APP_NAME} image bump PRs" \
+            2>/dev/null || true
+
       - name: Detect auto-merge
         id: release-class
         working-directory: argocd-apps
@@ -52,14 +62,13 @@ jobs:
           echo "current=${CUR}" >> "$GITHUB_OUTPUT"
 
           py_major() { echo "$1" | awk -F. '{print $1}'; }
-          py_minor() { echo "$1" | awk -F. '{print $2}'; }
           NEW_MAJ=$(py_major "$NEW"); CUR_MAJ=$(py_major "$CUR")
 
           if [[ -n "$NEW_MAJ" \
                 && "$NEW_MAJ" == "$CUR_MAJ" \
                 && "$NEW" != "$CUR" ]]; then
             echo "is_auto_merge=true" >> "$GITHUB_OUTPUT"
-            echo "AUTO-MERGE: ${CUR} -> ${NEW} (same major)"
+            echo "AUTO-MERGE: ${CUR} -> ${NEW} (minor or hotfix, same major)"
           else
             echo "is_auto_merge=false" >> "$GITHUB_OUTPUT"
             echo "MAJOR BUMP: ${CUR} -> ${NEW} (requires manual review)"
@@ -147,7 +156,7 @@ jobs:
           - \`rromani/${BACKEND_IMAGE}:${VERSION}\`
           - \`rromani/${FRONTEND_IMAGE}:${VERSION}\`
 
-          $([ "$IS_AUTO_MERGE" = "true" ] && echo "**Same major as previous** (was \`${CURRENT}\`) — this PR will be auto-merged." || echo "**Major version bump** (was \`${CURRENT}\`) — manual review and merge required.")
+          $([ "$IS_AUTO_MERGE" = "true" ] && echo "**Minor or hotfix** (same major as \`${CURRENT}\`) — this PR will be auto-merged." || echo "**Major version bump** (was \`${CURRENT}\`) — manual review and merge required.")
 
           Triggered automatically by the \`Release Images\` workflow.
           EOF
@@ -160,18 +169,23 @@ jobs:
             --title "chore: bump ${APP_NAME} to ${VERSION}" \
             --body "${BODY}" \
             --label "${APP_NAME}" \
-            | tail -n 1)
+            --json url \
+            -q .url)
+          if [ -z "${PR_URL}" ]; then
+            echo "ERROR: gh pr create did not return a PR URL"
+            exit 1
+          fi
           echo "url=${PR_URL}" >> "$GITHUB_OUTPUT"
           echo "Opened PR: ${PR_URL}"
 
-      - name: Merge PR (same major)
+      - name: Merge PR (minor or hotfix)
         if: steps.release-class.outputs.is_auto_merge == 'true'
         env:
           GH_TOKEN: ${{ secrets.ARGOCD_APPS_TOKEN }}
           PR_URL: ${{ steps.pr.outputs.url }}
         run: |
           set +e
-          echo "Same major — attempting auto-merge on ${PR_URL}"
+          echo "Minor or hotfix (same major) — attempting auto-merge on ${PR_URL}"
 
           gh pr merge --squash --delete-branch "${PR_URL}"
           if [ $? -ne 0 ]; then
