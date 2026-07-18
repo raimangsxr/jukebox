@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "vitest run"
+    "test": "vitest run --browser.headless",
+    "test:watch": "vitest --browser.headless"
   },
   "private": true,
   "dependencies": {
@@ -29,7 +30,9 @@
     "@angular/cli": "~22.0.4",
     "@angular/compiler-cli": "^22.0.0",
     "@types/qrcode": "^1.5.6",
+    "@vitest/browser-playwright": "^4.1.10",
     "autoprefixer": "^10.4.21",
+    "playwright": "^1.61.1",
     "postcss": "^8.4.49",
     "prettier": "^3.3.0",
     "prettier-plugin-tailwindcss": "^0.6.0",
