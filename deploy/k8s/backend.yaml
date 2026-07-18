@@ -110,6 +110,11 @@ spec:
                 configMapKeyRef:
                   name: jukebox-config
                   key: JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL
+            - name: JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT
+              valueFrom:
+                configMapKeyRef:
+                  name: jukebox-config
+                  key: JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT
           readinessProbe:
             httpGet:
               path: /api/health

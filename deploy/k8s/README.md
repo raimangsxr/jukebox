@@ -26,6 +26,7 @@ Canonical manifests for production. Mirror to `argocd-apps/manifests/jukebox/` f
 | `JUKEBOX_FRAME_ANCESTORS` | `https://kiosk.rromani.eu` |
 | `JUKEBOX_GOOGLE_REDIRECT_URI` | `https://jukebox.rromani.eu/api/auth/google/callback` |
 | `JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL` | `https://jukebox.rromani.eu/participar` |
+| `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` | `"2"` (max `pending_review` per participant) |
 
 ### Secret `jukebox-secrets`
 
