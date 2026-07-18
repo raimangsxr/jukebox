@@ -135,9 +135,13 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
         run: |
           BRANCH="bump-${APP_NAME}-${VERSION}"
-          git checkout -b "${BRANCH}"
+          git fetch origin "${BRANCH}" 2>/dev/null && git checkout "${BRANCH}" || git checkout -b "${BRANCH}"
           git add "manifests/${APP_NAME}"
-          git commit -m "chore: bump ${APP_NAME} to ${VERSION}"
+          if git diff --cached --quiet; then
+            echo "Manifests already match ${VERSION}; continuing to open or merge PR."
+          else
+            git commit -m "chore: bump ${APP_NAME} to ${VERSION}"
+          fi
           git push "https://x-access-token:${TOKEN}@github.com/raimangsxr/argocd-apps.git" "${BRANCH}"
 
       - name: Open PR
@@ -162,17 +166,24 @@ jobs:
           EOF
           )"
 
-          PR_URL=$(gh pr create \
+          PR_URL=""
+          CREATE_OUT=$(gh pr create \
             --repo raimangsxr/argocd-apps \
             --base main \
             --head "bump-${APP_NAME}-${VERSION}" \
             --title "chore: bump ${APP_NAME} to ${VERSION}" \
             --body "${BODY}" \
-            --label "${APP_NAME}" \
-            --json url \
-            -q .url)
+            --label "${APP_NAME}" 2>&1) || true
+          PR_URL=$(echo "${CREATE_OUT}" | grep -Eo 'https://github.com/[^ ]+/pull/[0-9]+' | tail -1)
           if [ -z "${PR_URL}" ]; then
-            echo "ERROR: gh pr create did not return a PR URL"
+            PR_URL=$(gh pr view "bump-${APP_NAME}-${VERSION}" \
+              --repo raimangsxr/argocd-apps \
+              --json url \
+              -q .url 2>/dev/null || true)
+          fi
+          if [ -z "${PR_URL}" ]; then
+            echo "${CREATE_OUT}"
+            echo "ERROR: could not create or resolve bump PR URL"
             exit 1
           fi
           echo "url=${PR_URL}" >> "$GITHUB_OUTPUT"
