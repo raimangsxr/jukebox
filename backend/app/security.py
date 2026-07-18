@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .database import get_db
-from .models import ApiToken, User
+from .models import ApiToken, Participant, User
+from .services.participant_session import read_participant_id
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -72,3 +73,46 @@ def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_current_participant(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> Participant:
+    participant_id = read_participant_id(request)
+    if not participant_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="not authenticated",
+        )
+    participant = db.get(Participant, participant_id)
+    if participant is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="not authenticated",
+        )
+    return participant
+
+
+CurrentParticipant = Annotated[Participant, Depends(get_current_participant)]
+
+
+def get_stream_subscriber(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    user_id = request.session.get("user_id")
+    if user_id:
+        user = db.get(User, user_id)
+        if user is not None:
+            return
+    participant_id = read_participant_id(request)
+    if participant_id and db.get(Participant, participant_id) is not None:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="not authenticated",
+    )
+
+
+StreamSubscriber = Annotated[None, Depends(get_stream_subscriber)]

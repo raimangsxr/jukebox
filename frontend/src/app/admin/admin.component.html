@@ -15,10 +15,90 @@
   </header>
 
   <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
-    <h2 class="mb-2 font-semibold">Moderación</h2>
-    <p class="text-sm text-jukebox-muted">
-      Cola de canciones pendientes de aprobación con enlace a YouTube (próximamente).
-    </p>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="font-semibold">Moderación</h2>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          [disabled]="!canStartPlayback || moderationBusy"
+          (click)="advancePlayback()"
+        >
+          Iniciar reproducción
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-white/20 px-3 py-1.5 text-sm disabled:opacity-50"
+          [disabled]="!canSkipPlayback || moderationBusy"
+          (click)="advancePlayback()"
+        >
+          Saltar canción
+        </button>
+      </div>
+    </div>
+
+    <p *ngIf="moderationError" class="mb-4 text-sm text-red-400">{{ moderationError }}</p>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-4">Título</th>
+            <th class="pb-2 pr-4">Vídeo</th>
+            <th class="pb-2 pr-4">Motivo rechazo</th>
+            <th class="pb-2">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of pending" class="border-t border-white/10">
+            <td class="py-2 pr-4">{{ entry.title }}</td>
+            <td class="py-2 pr-4">
+              <a
+                class="text-jukebox-primary hover:underline"
+                [href]="youtubeUrl(entry.youtube_video_id)"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Previsualizar
+              </a>
+            </td>
+            <td class="py-2 pr-4">
+              <input
+                class="w-full min-w-[8rem] rounded border border-white/10 bg-jukebox-deep px-2 py-1 text-sm"
+                type="text"
+                placeholder="Opcional"
+                [(ngModel)]="rejectReasons[entry.id]"
+                [name]="'reason-' + entry.id"
+                maxlength="200"
+              />
+            </td>
+            <td class="py-2">
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded bg-green-600/80 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  [disabled]="moderationBusy"
+                  (click)="approveEntry(entry.id)"
+                >
+                  Aprobar
+                </button>
+                <button
+                  type="button"
+                  class="rounded bg-red-600/70 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  [disabled]="moderationBusy"
+                  (click)="rejectEntry(entry.id)"
+                >
+                  Rechazar
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="pending.length === 0">
+            <td colspan="4" class="py-4 text-center text-jukebox-muted">No hay canciones pendientes de revisión.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">

@@ -1,18 +1,29 @@
 from datetime import datetime
+from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
 
 
 EVENT_CONFIG_SINGLETON_ID = 1
+JUKEBOX_RUNTIME_SINGLETON_ID = 1
 EVENT_CONFIG_DEFAULT_NAME = "Jukebox AMRN"
 EVENT_CONFIG_DEFAULT_SUBTITLE = "Elige la música del evento"
 EVENT_CONFIG_DEFAULT_APP_HEIGHT_PX = 720
 EVENT_CONFIG_DEFAULT_THEME = "dark"
 EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT = 8
+MAX_QUEUED_ENTRIES = 100
+
+
+class QueueEntryStatus(str, Enum):
+    pending_review = "pending_review"
+    rejected = "rejected"
+    queued = "queued"
+    playing = "playing"
+    played = "played"
 
 
 class User(Base):
@@ -71,4 +82,97 @@ class EventConfig(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class QueueEntry(Base):
+    __tablename__ = "queue_entries"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    youtube_video_id: Mapped[str] = mapped_column(String(11), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    duration_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    submitted_by_participant_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True
+    )
+    vote_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[QueueEntryStatus] = mapped_column(
+        SAEnum(
+            QueueEntryStatus,
+            name="queue_entry_status",
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        index=True,
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    original_query: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class JukeboxRuntime(Base):
+    __tablename__ = "jukebox_runtime"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    now_playing_entry_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("queue_entries.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class Participant(Base):
+    __tablename__ = "participants"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    google_sub: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, unique=True, index=True
+    )
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Vote(Base):
+    __tablename__ = "votes"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    queue_entry_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("queue_entries.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    participant_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("participants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )

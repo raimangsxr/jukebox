@@ -33,7 +33,37 @@ changes:
     contract: ops-platform
     description: Kubernetes manifests (deploy/k8s) mirroring argocd-apps/bull pattern; ArgoCD-ready.
 
+  - id: 004-kiosk-display-queue
+    path: specs/changes/004-kiosk-display-queue/
+    status: implemented
+    contract: backend-api
+    description: Kiosk display UI (90/10 layout), queue persistence, moderation APIs, SSE live updates.
+
+  - id: 005-participant-voting
+    path: specs/changes/005-participant-voting/
+    status: implemented
+    contract: backend-api
+    description: Participant voting on queued songs, dev participant session, SSE live updates on /participar.
+
+  - id: 006-participant-oauth-submit
+    path: specs/changes/006-participant-oauth-submit/
+    status: implemented
+    contract: backend-api
+    description: Google OAuth on /participar, participant YouTube submit, Mis canciones status UI.
+
+  - id: 007-participant-notifications
+    path: specs/changes/007-participant-notifications/
+    status: implemented
+    contract: backend-api
+    description: SSE song.approved and song.up_next notifications; Spanish toast queue on /participar.
+
+  - id: 008-youtube-text-search
+    path: specs/changes/008-youtube-text-search/
+    status: implemented
+    contract: backend-api
+    description: YouTube text search on /participar for participant song discovery and submit.
+
 active:
   change: null
-  contract: specs/contracts/ops-platform/contract.md
+  contract: specs/contracts/backend-api/contract.md
   context_pack: null

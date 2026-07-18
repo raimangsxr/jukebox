@@ -1,0 +1,17 @@
+@if (toastService.visibleMessage$ | async; as message) {
+  <div
+    class="notification-toast"
+    role="status"
+    aria-live="polite"
+  >
+    <p class="notification-toast__message">{{ message }}</p>
+    <button
+      type="button"
+      class="notification-toast__dismiss"
+      aria-label="Cerrar notificación"
+      (click)="dismiss()"
+    >
+      ×
+    </button>
+  </div>
+}
