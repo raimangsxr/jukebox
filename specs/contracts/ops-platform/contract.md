@@ -92,8 +92,19 @@ Seven core manifests + README in `deploy/k8s/`:
 | `JUKEBOX_OPERATOR_USERNAME` | Bootstrap operator |
 | `JUKEBOX_OPERATOR_PASSWORD` | ≥12 characters |
 | `JUKEBOX_SESSION_SECRET` | Long random hex |
+| `JUKEBOX_GOOGLE_CLIENT_ID` | Google OAuth Web client id |
+| `JUKEBOX_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 
 Git-tracked `secret.yaml` uses `REPLACE_ME` placeholders only. Operator applies real values out-of-band.
+
+### ConfigMap OAuth URLs (production)
+
+| Key | Value |
+|-----|-------|
+| `JUKEBOX_GOOGLE_REDIRECT_URI` | `https://jukebox.rromani.eu/api/auth/google/callback` |
+| `JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL` | `https://jukebox.rromani.eu/participar` |
+
+Register the redirect URI in Google Cloud Console for the OAuth client.
 
 ### Deploy order
 

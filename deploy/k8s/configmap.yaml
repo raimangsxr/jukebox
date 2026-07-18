@@ -6,4 +6,6 @@ metadata:
 data:
   JUKEBOX_COOKIE_SECURE: "true"
   JUKEBOX_FRAME_ANCESTORS: "https://kiosk.rromani.eu"
-  JUKEBOX_CORS_ALLOW_ORIGINS: "https://kiosk.rromani.eu"
+  JUKEBOX_CORS_ALLOW_ORIGINS: "https://jukebox.rromani.eu,https://kiosk.rromani.eu"
+  JUKEBOX_GOOGLE_REDIRECT_URI: "https://jukebox.rromani.eu/api/auth/google/callback"
+  JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL: "https://jukebox.rromani.eu/participar"

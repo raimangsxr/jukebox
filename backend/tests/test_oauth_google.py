@@ -15,6 +15,24 @@ def test_login_redirects_to_google(client, google_oauth_settings):
     assert "state=" in location
 
 
+def test_oauth_config_disabled_by_default(client):
+    response = client.get("/api/auth/google/config")
+    assert response.status_code == 200
+    assert response.json() == {"enabled": False}
+
+
+def test_oauth_config_enabled(client, google_oauth_settings):
+    response = client.get("/api/auth/google/config")
+    assert response.status_code == 200
+    assert response.json() == {"enabled": True}
+
+
+def test_login_redirects_when_oauth_not_configured(client):
+    response = client.get("/api/auth/google/login", follow_redirects=False)
+    assert response.status_code == 302
+    assert "oauth_error=not_configured" in response.headers["location"]
+
+
 def test_callback_upserts_participant_and_sets_cookie(
     google_oauth_client, db_session, google_profile
 ):

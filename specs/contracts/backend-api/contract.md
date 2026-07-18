@@ -65,10 +65,11 @@ No `notification` on reject, vote reorder, or entries without `submitted_by_part
 
 | Method | Path | Auth | Response |
 |--------|------|------|----------|
+| GET | `/api/auth/google/config` | public | `{ "enabled": boolean }` |
 | GET | `/api/auth/google/login` | public | 302 redirect to Google |
 | GET | `/api/auth/google/callback` | public | 302 redirect to return URL + Set-Cookie `jukebox_participant_session` |
 
-Callback success: redirect to `JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL` with optional `?oauth=ok`. Failure: `?oauth_error=denied|invalid_state|exchange_failed`.
+Callback success: redirect to `JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL` with optional `?oauth=ok`. Failure: `?oauth_error=denied|invalid_state|exchange_failed|not_configured`.
 
 ## Participant auth and voting (005)
 

@@ -30,11 +30,17 @@
       </p>
       <button
         type="button"
-        class="mt-4 w-full rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white"
+        class="mt-4 w-full rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+        [disabled]="!googleOAuthEnabled"
         (click)="signInGoogle()"
       >
         Iniciar sesión con Google
       </button>
+      @if (!googleOAuthEnabled) {
+        <p class="mt-2 text-sm text-amber-300">
+          El inicio de sesión con Google no está configurado todavía.
+        </p>
+      }
       @if (showDevAuth) {
         <button
           type="button"

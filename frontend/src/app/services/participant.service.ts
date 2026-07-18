@@ -29,7 +29,9 @@ const SEARCH_ERROR_MESSAGES: Record<string, string> = {
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   denied: 'Inicio de sesión cancelado o denegado.',
   invalid_state: 'Sesión de inicio no válida. Inténtalo de nuevo.',
-  exchange_failed: 'No se pudo completar el inicio de sesión con Google.'
+  exchange_failed: 'No se pudo completar el inicio de sesión con Google.',
+  not_configured:
+    'El inicio de sesión con Google no está configurado en el servidor. Contacta con el organizador.'
 };
 
 @Injectable({ providedIn: 'root' })
@@ -43,6 +45,10 @@ export class ParticipantService {
 
   startGoogleLogin(): void {
     window.location.href = `${this.baseUrl}/auth/google/login`;
+  }
+
+  getOAuthConfig(): Observable<{ enabled: boolean }> {
+    return this.http.get<{ enabled: boolean }>(`${this.baseUrl}/auth/google/config`);
   }
 
   parseOAuthReturnQuery(search: string): string | null {

@@ -57,6 +57,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
   submitting = false;
   votingEntryId: string | null = null;
   showDevAuth = false;
+  googleOAuthEnabled = false;
 
   searchEnabled = false;
   searchQuery = '';
@@ -81,7 +82,17 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     }
     this.showDevAuth =
       environment.allowDevParticipantAuth || params.get('dev') === '1';
-    void this.bootstrap();
+    void this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
+    try {
+      const oauthConfig = await firstValueFrom(this.participantService.getOAuthConfig());
+      this.googleOAuthEnabled = oauthConfig.enabled;
+    } catch {
+      this.googleOAuthEnabled = false;
+    }
+    await this.bootstrap();
   }
 
   ngOnDestroy(): void {
@@ -123,6 +134,12 @@ export class ParticipateComponent implements OnInit, OnDestroy {
 
   signInGoogle(): void {
     this.errorMessage = null;
+    if (!this.googleOAuthEnabled) {
+      this.errorMessage =
+        'El inicio de sesión con Google no está configurado en el servidor. Contacta con el organizador.';
+      this.cdr.markForCheck();
+      return;
+    }
     this.participantService.startGoogleLogin();
   }
 

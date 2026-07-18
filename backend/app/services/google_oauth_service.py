@@ -37,9 +37,14 @@ def verify_oauth_state(state: str | None) -> bool:
     return isinstance(payload, dict) and bool(payload.get("nonce"))
 
 
+def is_google_oauth_configured() -> bool:
+    settings = get_settings()
+    return bool(settings.google_client_id.strip() and settings.google_client_secret.strip())
+
+
 def build_authorize_url(state: str) -> str:
     settings = get_settings()
-    if not settings.google_client_id:
+    if not is_google_oauth_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="google oauth not configured",
@@ -54,6 +59,13 @@ def build_authorize_url(state: str) -> str:
         "prompt": "select_account",
     }
     return f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+
+
+def oauth_not_configured_redirect_url() -> str:
+    settings = get_settings()
+    return_url = settings.participant_oauth_return_url
+    separator = "&" if "?" in return_url else "?"
+    return f"{return_url}{separator}oauth_error=not_configured"
 
 
 def exchange_code_for_tokens(code: str) -> dict:

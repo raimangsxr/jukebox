@@ -3,10 +3,13 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
+from ..schemas import OAuthConfigResponse
 from ..services.google_oauth_service import (
     build_authorize_url,
     complete_google_callback,
     create_oauth_state,
+    is_google_oauth_configured,
+    oauth_not_configured_redirect_url,
 )
 from ..services.participant_session import set_participant_cookie
 
@@ -14,8 +17,15 @@ from ..services.participant_session import set_participant_cookie
 router = APIRouter(prefix="/api/auth/google", tags=["auth-google"])
 
 
+@router.get("/config", response_model=OAuthConfigResponse)
+def google_oauth_config() -> OAuthConfigResponse:
+    return OAuthConfigResponse(enabled=is_google_oauth_configured())
+
+
 @router.get("/login")
 def google_login() -> RedirectResponse:
+    if not is_google_oauth_configured():
+        return RedirectResponse(url=oauth_not_configured_redirect_url(), status_code=302)
     state = create_oauth_state()
     url = build_authorize_url(state)
     return RedirectResponse(url=url, status_code=302)

@@ -21,9 +21,11 @@ Canonical manifests for production. Mirror to `argocd-apps/manifests/jukebox/` f
 
 | Key | Production value |
 |-----|------------------|
-| `JUKEBOX_CORS_ALLOW_ORIGINS` | `https://kiosk.rromani.eu` |
+| `JUKEBOX_CORS_ALLOW_ORIGINS` | `https://jukebox.rromani.eu,https://kiosk.rromani.eu` |
 | `JUKEBOX_COOKIE_SECURE` | `"true"` |
 | `JUKEBOX_FRAME_ANCESTORS` | `https://kiosk.rromani.eu` |
+| `JUKEBOX_GOOGLE_REDIRECT_URI` | `https://jukebox.rromani.eu/api/auth/google/callback` |
+| `JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL` | `https://jukebox.rromani.eu/participar` |
 
 ### Secret `jukebox-secrets`
 
@@ -33,6 +35,8 @@ Canonical manifests for production. Mirror to `argocd-apps/manifests/jukebox/` f
 | `JUKEBOX_OPERATOR_USERNAME` | Operator login |
 | `JUKEBOX_OPERATOR_PASSWORD` | ≥12 characters |
 | `JUKEBOX_SESSION_SECRET` | Random hex string |
+| `JUKEBOX_GOOGLE_CLIENT_ID` | Google Cloud OAuth Web client id |
+| `JUKEBOX_GOOGLE_CLIENT_SECRET` | Google Cloud OAuth client secret |
 
 Replace `REPLACE_ME` in `secret.yaml` locally before apply, or create the Secret in-cluster with `kubectl create secret generic`.
 

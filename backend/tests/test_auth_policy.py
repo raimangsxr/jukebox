@@ -8,6 +8,7 @@ PUBLIC_PATHS_002 = {
     "/api/auth/token": {"post"},
     "/api/auth/google/login": {"get"},
     "/api/auth/google/callback": {"get"},
+    "/api/auth/google/config": {"get"},
     "/api/youtube/search/config": {"get"},
 }
 

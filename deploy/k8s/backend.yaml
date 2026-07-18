@@ -90,6 +90,26 @@ spec:
                 configMapKeyRef:
                   name: jukebox-config
                   key: JUKEBOX_FRAME_ANCESTORS
+            - name: JUKEBOX_GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: jukebox-secrets
+                  key: JUKEBOX_GOOGLE_CLIENT_ID
+            - name: JUKEBOX_GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jukebox-secrets
+                  key: JUKEBOX_GOOGLE_CLIENT_SECRET
+            - name: JUKEBOX_GOOGLE_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: jukebox-config
+                  key: JUKEBOX_GOOGLE_REDIRECT_URI
+            - name: JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: jukebox-config
+                  key: JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL
           readinessProbe:
             httpGet:
               path: /api/health

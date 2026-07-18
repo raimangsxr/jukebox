@@ -136,6 +136,10 @@ class SearchConfigResponse(BaseModel):
     enabled: bool
 
 
+class OAuthConfigResponse(BaseModel):
+    enabled: bool
+
+
 class SearchResultItem(BaseModel):
     youtube_video_id: str
     title: str
