@@ -217,6 +217,31 @@ def submit_as_participant(
         raise
     db.refresh(entry)
     bump_revision(db)
+    # #region agent log
+    import json
+    import time
+
+    with open(
+        "/Users/rromanit/workspace/jukebox/.cursor/debug-5a1431.log", "a", encoding="utf-8"
+    ) as _f:
+        _f.write(
+            json.dumps(
+                {
+                    "sessionId": "5a1431",
+                    "hypothesisId": "B",
+                    "location": "queue_service.py:submit_as_participant",
+                    "message": "participant submission created",
+                    "data": {
+                        "entry_id": entry.id,
+                        "status": str(entry.status),
+                        "participant_id": participant_id,
+                    },
+                    "timestamp": int(time.time() * 1000),
+                }
+            )
+            + "\n"
+        )
+    # #endregion
     return entry
 
 
