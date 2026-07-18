@@ -58,30 +58,6 @@ def get_current_user(
 ) -> User:
     user_id = request.session.get("user_id")
     if not user_id:
-        # #region agent log
-        if request.url.path.endswith("/queue/pending"):
-            import json
-            import time
-
-            with open(
-                "/Users/rromanit/workspace/jukebox/.cursor/debug-5a1431.log",
-                "a",
-                encoding="utf-8",
-            ) as _f:
-                _f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "5a1431",
-                            "hypothesisId": "A",
-                            "location": "security.py:get_current_user",
-                            "message": "operator auth missing for pending",
-                            "data": {"path": request.url.path},
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        # #endregion
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="not authenticated",

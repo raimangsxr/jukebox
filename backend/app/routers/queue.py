@@ -20,36 +20,10 @@ router = APIRouter(prefix="/api/queue", tags=["queue"])
 
 @router.get("/pending", response_model=PendingListResponse)
 def get_pending(
-    user: CurrentUser,
+    _user: CurrentUser,
     db: Session = Depends(get_db),
 ) -> PendingListResponse:
     entries = queue_service.list_pending(db)
-    # #region agent log
-    import json
-    import time
-
-    with open(
-        "/Users/rromanit/workspace/jukebox/.cursor/debug-5a1431.log", "a", encoding="utf-8"
-    ) as _f:
-        _f.write(
-            json.dumps(
-                {
-                    "sessionId": "5a1431",
-                    "hypothesisId": "B",
-                    "location": "queue.py:get_pending",
-                    "message": "pending list served",
-                    "data": {
-                        "operator_user_id": user.id,
-                        "count": len(entries),
-                        "entry_ids": [entry.id for entry in entries],
-                        "statuses": [str(entry.status) for entry in entries],
-                    },
-                    "timestamp": int(time.time() * 1000),
-                }
-            )
-            + "\n"
-        )
-    # #endregion
     return PendingListResponse(
         entries=[QueueEntryRead.model_validate(e) for e in entries]
     )

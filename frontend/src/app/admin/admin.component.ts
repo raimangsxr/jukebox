@@ -115,80 +115,12 @@ export class AdminComponent implements OnInit {
 
   refreshPending(): void {
     this.moderationError = null;
-    const pendingUrl = `${this.baseUrl}/queue/pending`;
-    // #region agent log
-    fetch('http://127.0.0.1:7821/ingest/18106da6-a1c7-4a03-9a1b-0438c2a1ea19', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5a1431' },
-      body: JSON.stringify({
-        sessionId: '5a1431',
-        hypothesisId: 'E',
-        location: 'admin.component.ts:refreshPending',
-        message: 'pending request start',
-        data: { pendingUrl },
-        timestamp: Date.now()
-      })
-    }).catch(() => {});
-    // #endregion
     this.queueAdmin.getPending().subscribe({
       next: res => {
-        // #region agent log
-        fetch('http://127.0.0.1:7821/ingest/18106da6-a1c7-4a03-9a1b-0438c2a1ea19', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5a1431' },
-          body: JSON.stringify({
-            sessionId: '5a1431',
-            hypothesisId: 'C',
-            location: 'admin.component.ts:refreshPending',
-            message: 'pending request success',
-            data: {
-              entriesIsArray: Array.isArray(res.entries),
-              entriesLength: res.entries?.length ?? null,
-              entryIds: Array.isArray(res.entries) ? res.entries.map(e => e.id) : []
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
-        const entries = Array.isArray(res.entries) ? res.entries : [];
-        this.pending.set(entries);
+        this.pending.set(Array.isArray(res.entries) ? res.entries : []);
         this.cdr.markForCheck();
-        // #region agent log
-        fetch('http://127.0.0.1:7821/ingest/18106da6-a1c7-4a03-9a1b-0438c2a1ea19', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5a1431' },
-          body: JSON.stringify({
-            sessionId: '5a1431',
-            hypothesisId: 'C',
-            location: 'admin.component.ts:refreshPending',
-            message: 'pending signal updated',
-            data: {
-              signalLength: this.pending().length,
-              entryIds: this.pending().map(entry => entry.id)
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
       },
-      error: err => {
-        // #region agent log
-        fetch('http://127.0.0.1:7821/ingest/18106da6-a1c7-4a03-9a1b-0438c2a1ea19', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5a1431' },
-          body: JSON.stringify({
-            sessionId: '5a1431',
-            hypothesisId: 'A',
-            location: 'admin.component.ts:refreshPending',
-            message: 'pending request error',
-            data: {
-              status: err?.status ?? null,
-              detail: err?.error?.detail ?? null
-            },
-            timestamp: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
+      error: () => {
         this.moderationError = 'No se pudo cargar la cola de moderación.';
         this.cdr.markForCheck();
       }
