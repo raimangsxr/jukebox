@@ -335,13 +335,16 @@ def youtube_api_keys(monkeypatch):
     get_settings.cache_clear()
     from app.services.search_rate_limiter import reset_for_tests
     from app.services.youtube_api_key_pool import get_youtube_api_key_pool
+    from app.services.youtube_api_key_usage_service import reset_for_tests as reset_usage
 
     get_youtube_api_key_pool().reset_for_tests()
     reset_for_tests()
+    reset_usage()
     yield
     get_settings.cache_clear()
     get_youtube_api_key_pool().reset_for_tests()
     reset_for_tests()
+    reset_usage()
 
 
 def make_youtube_search_response(

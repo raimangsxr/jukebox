@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.orm import Session
+
 from ..config import get_settings
 
 _PACIFIC = ZoneInfo("America/Los_Angeles")
@@ -21,11 +23,29 @@ class YoutubeApiKeyPool:
         until = self._exhausted_until.get(key)
         return until is None or now >= until
 
-    def has_available_key(self, now: datetime | None = None) -> bool:
-        now = now or datetime.now(_PACIFIC)
-        return any(self._is_available(key, now) for key in self._keys())
+    def _is_db_exhausted(self, db: Session | None, key: str) -> bool:
+        if db is None:
+            return False
+        from .youtube_api_key_usage_service import is_key_exhausted_in_db
 
-    def acquire_key(self, now: datetime | None = None) -> str | None:
+        return is_key_exhausted_in_db(db, key)
+
+    def has_available_key(
+        self,
+        now: datetime | None = None,
+        db: Session | None = None,
+    ) -> bool:
+        now = now or datetime.now(_PACIFIC)
+        return any(
+            self._is_available(key, now) and not self._is_db_exhausted(db, key)
+            for key in self._keys()
+        )
+
+    def acquire_key(
+        self,
+        now: datetime | None = None,
+        db: Session | None = None,
+    ) -> str | None:
         keys = self._keys()
         if not keys:
             return None
@@ -33,7 +53,7 @@ class YoutubeApiKeyPool:
         for _ in range(len(keys)):
             key = keys[self._next_index % len(keys)]
             self._next_index = (self._next_index + 1) % len(keys)
-            if self._is_available(key, now):
+            if self._is_available(key, now) and not self._is_db_exhausted(db, key):
                 return key
         return None
 

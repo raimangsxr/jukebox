@@ -166,3 +166,20 @@ class NotificationEventRead(BaseModel):
     queue_entry_id: str
     participant_id: str
     title: str
+
+
+class ApiKeyUsageItem(BaseModel):
+    index: int
+    label: str
+    masked_suffix: str
+    used_count: int
+    remaining_count: int
+    daily_limit: int
+    exhausted: bool
+
+
+class ApiKeyUsageListResponse(BaseModel):
+    keys: list[ApiKeyUsageItem]
+    daily_limit: int
+    quota_day: str
+    next_reset_at: str

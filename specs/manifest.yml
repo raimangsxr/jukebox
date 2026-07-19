@@ -63,6 +63,12 @@ changes:
     contract: backend-api
     description: YouTube text search on /participar for participant song discovery and submit.
 
+  - id: 009-admin-api-key-usage
+    path: specs/changes/009-admin-api-key-usage/
+    status: implemented
+    contract: backend-api
+    description: Admin per-key YouTube API daily usage tracking with SSE live updates.
+
 active:
   change: null
   contract: specs/contracts/backend-api/contract.md

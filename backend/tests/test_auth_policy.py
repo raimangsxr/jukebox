@@ -15,6 +15,7 @@ PUBLIC_PATHS_002 = {
 PROTECTED_PATHS_002 = {
     "/api/auth/me": {"get"},
     "/api/tokens": {"get", "post"},
+    "/api/youtube/api-keys/usage": {"get"},
 }
 
 PROTECTED_PATHS_004 = {
@@ -116,4 +117,16 @@ def test_youtube_search_config_is_public(client):
 
 def test_youtube_search_requires_participant_auth(client):
     response = client.get("/api/youtube/search", params={"q": "test query"})
+    assert response.status_code == 401
+
+
+def test_api_key_usage_requires_operator_auth(client, youtube_api_keys):
+    response = client.get("/api/youtube/api-keys/usage")
+    assert response.status_code == 401
+
+
+def test_api_key_usage_rejects_participant(
+    dev_participant_client, youtube_api_keys
+):
+    response = dev_participant_client.get("/api/youtube/api-keys/usage")
     assert response.status_code == 401

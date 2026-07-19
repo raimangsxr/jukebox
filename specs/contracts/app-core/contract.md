@@ -67,7 +67,7 @@ CSS variable `--jukebox-app-height` from `event_config.app_height_px` (default 7
 
 ## Display services (004)
 
-- `DisplayStateService` — `GET /api/state`, SSE `/api/events/stream`, `state$`, `advancePlayback()`
+- `DisplayStateService` — `GET /api/state`, SSE `/api/events/stream`, `state$`, `apiKeyUsage$`, `advancePlayback()`
 - Child components: `YoutubePlayerComponent`, `QrPanelComponent`, `QueueStripComponent`
 
 ## Admin UI
@@ -83,6 +83,15 @@ CSS variable `--jukebox-app-height` from `event_config.app_height_px` (default 7
 - **Iniciar reproducción** when idle + queued; **Saltar canción** when playing
 - YouTube preview opens `https://www.youtube.com/watch?v={id}` in new tab
 - Spanish error messages for queue conflicts
+
+### Uso de API Keys (009)
+
+- Section between **Moderación** and **Evento**
+- Table: Clave (label + masked suffix), Usados, Restantes, Límite (100), Estado (Activa/Agotada)
+- Global label: **Próximo reinicio:** formatted `next_reset_at` (Pacific)
+- Empty state: `No hay API keys de YouTube configuradas.`
+- Initial load: `GET /api/youtube/api-keys/usage`
+- Live updates: SSE `api_key_usage` via `DisplayStateService.apiKeyUsage$` (no polling)
 
 ## Bootstrap
 
@@ -160,3 +169,4 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **006-participant-oauth-submit** — Google OAuth, submit form, Mis canciones
 - **007-participant-notifications** — in-app notification toasts on `/participar`
 - **008-youtube-text-search** — YouTube text search UI, dual-path submit, sticky footer
+- **009-admin-api-key-usage** — Admin per-key YouTube API usage table with SSE updates

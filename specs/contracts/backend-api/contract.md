@@ -1,6 +1,6 @@
 # backend-api Contract
 
-Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search** (2026-07-18).
+Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search**, **009-admin-api-key-usage** (2026-07-19).
 
 ## Purpose
 
@@ -39,7 +39,7 @@ FastAPI + Alembic + PostgreSQL service for amrn-jukebox. Owns persistent event c
 
 SSE `event: state` payload matches `StateResponse`. Heartbeat comment every 30s. Response header `X-Accel-Buffering: no`.
 
-**Also on the same stream** (`event: notification`, payload `NotificationEventRead`):
+**Also on the same stream** (`event: notification`, payload `NotificationEventRead`; `event: api_key_usage`, payload `ApiKeyUsageListResponse`):
 
 | `type` | When |
 |--------|------|
@@ -136,6 +136,20 @@ Query: `q` (min length after trim per `JUKEBOX_YOUTUBE_SEARCH_MIN_QUERY_LENGTH`,
 
 Multi-key pool: round-robin per request; automatic retry on per-key quota exhaustion; keys never exposed to clients.
 
+### API key usage (009)
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| GET | `/api/youtube/api-keys/usage` | operator session | 200 `ApiKeyUsageListResponse` |
+
+`ApiKeyUsageItem`: `index`, `label` (e.g. `Clave 1`), `masked_suffix` (last 4 chars only), `used_count`, `remaining_count`, `daily_limit` (100), `exhausted`.
+
+`ApiKeyUsageListResponse`: `keys[]`, `daily_limit`, `quota_day` (Pacific ISO date), `next_reset_at` (next Pacific midnight ISO-8601).
+
+Accounting: increment `used_count` by 1 before each outbound YouTube Data API request attributed to a pool key (search + `videos.list` metadata); count on attempt regardless of HTTP outcome; do not increment on validation/rate-limit before pool; on Google quota-exhausted set `used_count=100` and `exhausted=true`; Pacific quota day reset.
+
+SSE `event: api_key_usage` on `/api/events/stream` with `ApiKeyUsageListResponse` payload after usage changes or quota-day roll. Kiosk/participant clients ignore unknown events.
+
 ### Participant submit errors (006)
 
 API returns stable English `detail` strings; frontend maps to Spanish.
@@ -186,7 +200,7 @@ Participants may submit while they already have songs in `queued` or `playing`; 
 | `GET /api/auth/google/login` | `GET /api/queue/pending` | `POST /api/votes` | |
 | `GET /api/auth/google/callback` | `GET /api/state` | `GET /api/participant/submissions` | |
 | `POST /api/participant/dev-auth` (when enabled) | `POST /api/queue/*` | `POST /api/queue/submit` | |
-| `GET /api/youtube/search/config` | | `GET /api/youtube/search` | |
+| `GET /api/youtube/search/config` | `GET /api/youtube/api-keys/usage` | `GET /api/youtube/search` | |
 
 `backend/tests/test_auth_policy.py` asserts the canonical public route list.
 
@@ -233,6 +247,10 @@ Tables: `participants` (`id`, `display_name`, `created_at`), `votes` (`id`, `que
 ### Alembic 0005
 
 Extend `participants`: `google_sub` (unique nullable), `email`, `avatar_url`.
+
+### Alembic 0006
+
+Table: `youtube_api_key_daily_usage` — `key_hash`, `quota_day` (Pacific date), `used_count`, `exhausted`, `updated_at`; unique `(key_hash, quota_day)`.
 
 ## Planned (007+)
 
@@ -281,6 +299,7 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - `backend/tests/test_participant_submissions.py` — submissions list
 - `backend/tests/test_notifications.py` — SSE notification emit and targeting
 - `backend/tests/test_youtube_search.py` — search config, auth, rate limits, key pool failover
+- `backend/tests/test_youtube_api_key_usage.py` — per-key usage, SSE `api_key_usage`, auth, persistence
 
 ## Change history
 
@@ -291,3 +310,4 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - **006-participant-oauth-submit** — Google OAuth, participant submit, Mis canciones, Alembic 0005
 - **007-participant-notifications** — SSE `notification` events, `notification_service`, no migration
 - **008-youtube-text-search** — YouTube text search API, multi-key pool, dual-path `/participar` submit UX
+- **009-admin-api-key-usage** — per-key YouTube API daily usage tracking, `GET /api/youtube/api-keys/usage`, SSE `api_key_usage`

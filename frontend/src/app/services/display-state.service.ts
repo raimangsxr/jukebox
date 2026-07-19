@@ -4,6 +4,7 @@ import { BehaviorSubject, Observable, Subscription, firstValueFrom } from 'rxjs'
 
 import { environment } from '../../environments/environment';
 import { StateResponse } from '../models/jukebox-state';
+import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
 
 @Injectable({ providedIn: 'root' })
 export class DisplayStateService implements OnDestroy {
@@ -12,12 +13,16 @@ export class DisplayStateService implements OnDestroy {
   private readonly baseUrl = environment.apiBaseUrl;
 
   private readonly stateSubject = new BehaviorSubject<StateResponse | null>(null);
+  private readonly apiKeyUsageSubject =
+    new BehaviorSubject<ApiKeyUsageListResponse | null>(null);
   private eventSource: EventSource | null = null;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
 
   readonly state$: Observable<StateResponse | null> = this.stateSubject.asObservable();
+  readonly apiKeyUsage$: Observable<ApiKeyUsageListResponse | null> =
+    this.apiKeyUsageSubject.asObservable();
 
   ngOnDestroy(): void {
     this.stop();
@@ -25,6 +30,10 @@ export class DisplayStateService implements OnDestroy {
 
   get snapshot(): StateResponse | null {
     return this.stateSubject.value;
+  }
+
+  get apiKeyUsageSnapshot(): ApiKeyUsageListResponse | null {
+    return this.apiKeyUsageSubject.value;
   }
 
   async start(): Promise<void> {
@@ -82,6 +91,16 @@ export class DisplayStateService implements OnDestroy {
       try {
         const state = JSON.parse(event.data) as StateResponse;
         this.stateSubject.next(state);
+        this.reconnectAttempt = 0;
+      } catch {
+        // ignore malformed payloads
+      }
+    });
+
+    this.eventSource.addEventListener('api_key_usage', (event: MessageEvent<string>) => {
+      try {
+        const usage = JSON.parse(event.data) as ApiKeyUsageListResponse;
+        this.apiKeyUsageSubject.next(usage);
         this.reconnectAttempt = 0;
       } catch {
         // ignore malformed payloads

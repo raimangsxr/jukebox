@@ -4,7 +4,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from sqlalchemy.orm import Session
+
 from .youtube_api_key_pool import get_youtube_api_key_pool
+from .youtube_api_key_usage_service import mark_google_exhausted, record_attempt
 from ..config import get_settings
 
 YOUTUBE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{11}$")
@@ -47,7 +50,7 @@ def _parse_quota_error(body: str) -> bool:
     return False
 
 
-def fetch_youtube_duration_sec(video_id: str) -> int | None:
+def fetch_youtube_duration_sec(video_id: str, db: Session | None = None) -> int | None:
     if not get_settings().youtube_api_keys.strip():
         return None
 
@@ -55,10 +58,12 @@ def fetch_youtube_duration_sec(video_id: str) -> int | None:
     keys = [key.strip() for key in get_settings().youtube_api_keys.split(",") if key.strip()]
     attempts = 0
     while attempts < len(keys):
-        api_key = pool.acquire_key()
+        api_key = pool.acquire_key(db=db)
         if api_key is None:
             break
         attempts += 1
+        if db is not None:
+            record_attempt(db, api_key)
         try:
             params = urllib.parse.urlencode(
                 {
@@ -80,6 +85,8 @@ def fetch_youtube_duration_sec(video_id: str) -> int | None:
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             if exc.code == 403 and _parse_quota_error(body):
+                if db is not None:
+                    mark_google_exhausted(db, api_key)
                 pool.mark_exhausted(api_key)
                 continue
             return None
