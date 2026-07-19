@@ -6,10 +6,12 @@ import urllib.parse
 import urllib.request
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..schemas import SearchResultItem
 from .youtube_api_key_pool import get_youtube_api_key_pool
+from .youtube_api_key_usage_service import mark_google_exhausted, record_attempt
 
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 QUOTA_ERROR_REASONS = frozenset(
@@ -92,7 +94,7 @@ def validate_search_query(query: str) -> str:
     return _validate_query(query)
 
 
-def search_videos(query: str) -> list[SearchResultItem]:
+def search_videos(query: str, db: Session) -> list[SearchResultItem]:
     trimmed = _validate_query(query)
     settings = get_settings()
     if not settings.youtube_api_keys.strip():
@@ -105,16 +107,18 @@ def search_videos(query: str) -> list[SearchResultItem]:
     keys = [k.strip() for k in settings.youtube_api_keys.split(",") if k.strip()]
     attempts = 0
     while attempts < len(keys):
-        api_key = pool.acquire_key()
+        api_key = pool.acquire_key(db=db)
         if api_key is None:
             break
         attempts += 1
+        record_attempt(db, api_key)
         try:
             payload = _fetch_with_key(trimmed, api_key)
             return _parse_items(payload)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             if exc.code == 403 and _parse_quota_error(body):
+                mark_google_exhausted(db, api_key)
                 pool.mark_exhausted(api_key)
                 continue
             raise HTTPException(

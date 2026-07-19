@@ -48,3 +48,20 @@ def broadcast_notification(notification: Any) -> None:
             queue.put_nowait(message)
         except asyncio.QueueFull:
             pass
+
+
+def format_api_key_usage_event(usage: Any) -> str:
+    if hasattr(usage, "model_dump"):
+        payload = usage.model_dump(mode="json")
+    else:
+        payload = usage
+    return f"event: api_key_usage\ndata: {json.dumps(payload)}\n\n"
+
+
+def broadcast_api_key_usage(usage: Any) -> None:
+    message = format_api_key_usage_event(usage)
+    for queue in list(_subscribers):
+        try:
+            queue.put_nowait(message)
+        except asyncio.QueueFull:
+            pass

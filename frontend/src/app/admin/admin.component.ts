@@ -14,6 +14,7 @@ import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { environment } from '../../environments/environment';
+import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
 import { AuthService } from '../services/auth.service';
 import { PendingQueueEntryRead } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
@@ -68,19 +69,30 @@ export class AdminComponent implements OnInit, OnDestroy {
   loggingOut = false;
   moderationBusy = false;
   rejectReasons: Record<string, string> = {};
+  apiKeyUsage: ApiKeyUsageListResponse | null = null;
+  apiKeyUsageError: string | null = null;
   private stateSubscription: Subscription | null = null;
+  private apiKeyUsageSubscription: Subscription | null = null;
 
   ngOnInit(): void {
     this.refreshTokens();
+    this.refreshApiKeyUsage();
     void this.displayState.start();
     this.stateSubscription = this.displayState.state$.subscribe(() => {
       this.refreshPending();
       this.cdr.markForCheck();
     });
+    this.apiKeyUsageSubscription = this.displayState.apiKeyUsage$.subscribe(usage => {
+      if (usage) {
+        this.apiKeyUsage = usage;
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   ngOnDestroy(): void {
     this.stateSubscription?.unsubscribe();
+    this.apiKeyUsageSubscription?.unsubscribe();
     this.displayState.stop();
   }
 
@@ -97,6 +109,51 @@ export class AdminComponent implements OnInit, OnDestroy {
     return !this.canStartPlayback && !this.canSkipPlayback;
   }
 
+  refreshTokens(): void {
+    this.tokenError = null;
+    this.http
+      .get<TokenListResponse>(`${this.baseUrl}/tokens`)
+      .subscribe({
+        next: res => {
+        this.tokens = res.tokens;
+        this.cdr.markForCheck();
+      },
+        error: () => (this.tokenError = 'No se pudieron cargar los tokens.')
+      });
+  }
+
+  refreshApiKeyUsage(): void {
+    this.apiKeyUsageError = null;
+    this.http
+      .get<ApiKeyUsageListResponse>(`${this.baseUrl}/youtube/api-keys/usage`)
+      .subscribe({
+        next: res => {
+          this.apiKeyUsage = res;
+          this.cdr.markForCheck();
+        },
+        error: () => {
+          this.apiKeyUsageError = 'No se pudo cargar el uso de API keys.';
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  formatResetAt(value: string | undefined): string {
+    if (!value) {
+      return '—';
+    }
+    const date = new Date(value);
+    return date.toLocaleString('es-ES', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+      timeZone: 'America/Los_Angeles'
+    });
+  }
+
+  usageStatusLabel(exhausted: boolean): string {
+    return exhausted ? 'Agotada' : 'Activa';
+  }
+
   logout(): void {
     this.loggingOut = true;
     this.auth.logout().subscribe({
@@ -109,19 +166,6 @@ export class AdminComponent implements OnInit, OnDestroy {
         this.router.navigate(['/login']);
       }
     });
-  }
-
-  refreshTokens(): void {
-    this.tokenError = null;
-    this.http
-      .get<TokenListResponse>(`${this.baseUrl}/tokens`)
-      .subscribe({
-        next: res => {
-        this.tokens = res.tokens;
-        this.cdr.markForCheck();
-      },
-        error: () => (this.tokenError = 'No se pudieron cargar los tokens.')
-      });
   }
 
   refreshPending(): void {

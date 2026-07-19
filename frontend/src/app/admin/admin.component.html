@@ -108,6 +108,59 @@
   </section>
 
   <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="font-semibold">Uso de API Keys</h2>
+      <p *ngIf="apiKeyUsage as usage" class="text-sm text-jukebox-muted">
+        Próximo reinicio: {{ formatResetAt(usage.next_reset_at) }}
+      </p>
+    </div>
+
+    <p *ngIf="apiKeyUsageError" class="mb-4 text-sm text-red-400">{{ apiKeyUsageError }}</p>
+
+    <div class="overflow-x-auto" *ngIf="apiKeyUsage && apiKeyUsage.keys.length > 0; else apiKeyEmpty">
+      <table class="w-full text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-4">Clave</th>
+            <th class="pb-2 pr-4">Usados</th>
+            <th class="pb-2 pr-4">Restantes</th>
+            <th class="pb-2 pr-4">Límite</th>
+            <th class="pb-2">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let key of apiKeyUsage.keys"
+            class="border-t border-white/10"
+            [class.usage-exhausted]="key.exhausted"
+          >
+            <td class="py-2 pr-4">
+              {{ key.label }} <span class="text-jukebox-muted">{{ key.masked_suffix }}</span>
+            </td>
+            <td class="py-2 pr-4 tabular-nums">{{ key.used_count }}</td>
+            <td class="py-2 pr-4 tabular-nums">{{ key.remaining_count }}</td>
+            <td class="py-2 pr-4 tabular-nums">{{ key.daily_limit }}</td>
+            <td class="py-2">
+              <span
+                class="usage-status"
+                [class.usage-status-exhausted]="key.exhausted"
+              >
+                {{ usageStatusLabel(key.exhausted) }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ng-template #apiKeyEmpty>
+      <p class="py-4 text-center text-jukebox-muted">
+        No hay API keys de YouTube configuradas.
+      </p>
+    </ng-template>
+  </section>
+
+  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
     <h2 class="mb-2 font-semibold">Evento</h2>
     <p class="text-sm text-jukebox-muted">Nombre, subtítulo y altura del display (próximamente).</p>
   </section>
