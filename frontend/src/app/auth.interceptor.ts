@@ -7,14 +7,28 @@ import { AuthService } from './services/auth.service';
 
 const EXEMPT_PATHS = [
   '/api/auth/login',
+  '/api/auth/logout',
   '/api/auth/me',
   '/api/auth/token',
   '/api/participant/dev-auth',
   '/api/participant/me'
 ];
 
-const isExempt = (url: string): boolean =>
-  EXEMPT_PATHS.some(p => url.endsWith(p));
+const apiPath = (url: string): string => {
+  try {
+    return new URL(url, 'http://local').pathname;
+  } catch {
+    return url.split('?')[0] ?? url;
+  }
+};
+
+const isExempt = (url: string): boolean => {
+  const path = apiPath(url);
+  return EXEMPT_PATHS.some(p => path === p || path.endsWith(p));
+};
+
+const isLoginRoute = (url: string): boolean =>
+  url === '/login' || url.startsWith('/login?') || url.startsWith('/login/');
 
 const isParticipateRoute = (url: string): boolean =>
   url === '/participar' || url.startsWith('/participar?');
@@ -33,6 +47,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
           auth.setSessionExpired();
         } else if (isParticipateRoute(router.url) && isParticipantApi(req.url)) {
           // /participar handles participant 401 locally
+        } else if (isLoginRoute(router.url)) {
+          // Login form handles invalid credentials locally
         } else {
           auth.logout().subscribe({
             complete: () => router.navigate(['/login'])

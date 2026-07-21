@@ -26,7 +26,7 @@ import { EventConfigSummary } from '../models/jukebox-state';
       </h2>
 
       <p *ngIf="eventConfig?.subtitle" class="text-xs text-jukebox-muted md:text-sm">
-        {{ eventConfig?.subtitle }}
+        {{ eventConfig.subtitle }}
       </p>
 
       <img
