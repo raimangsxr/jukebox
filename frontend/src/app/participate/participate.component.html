@@ -189,7 +189,7 @@
               <button
                 type="button"
                 class="shrink-0 rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
-                [disabled]="(state?.votes_remaining ?? 0) === 0 || votingEntryId === entry.id"
+                [disabled]="state.votes_remaining === 0 || votingEntryId === entry.id"
                 (click)="vote(entry)"
               >
                 Votar

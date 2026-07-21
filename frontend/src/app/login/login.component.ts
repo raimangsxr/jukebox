@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
+import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../services/auth.service';
 
@@ -26,6 +27,7 @@ export class LoginComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   submit(): void {
     this.errorMessage = null;
@@ -34,23 +36,29 @@ export class LoginComponent {
       return;
     }
     this.submitting = true;
-    this.auth.login(this.username.trim(), this.password).subscribe({
-      next: () => {
-        this.submitting = false;
-        const target = this.safeReturnUrl();
-        this.router.navigateByUrl(target);
-      },
-      error: (err: HttpErrorResponse) => {
-        this.submitting = false;
-        if (err.status === 401) {
-          this.errorMessage = 'Credenciales inválidas.';
-        } else if (err.status === 422) {
-          this.errorMessage = 'Revisa los campos.';
-        } else {
-          this.errorMessage = 'No se pudo conectar con el servidor.';
+    this.auth
+      .login(this.username.trim(), this.password)
+      .pipe(
+        finalize(() => {
+          this.submitting = false;
+          this.cdr.markForCheck();
+        })
+      )
+      .subscribe({
+        next: () => {
+          const target = this.safeReturnUrl();
+          this.router.navigateByUrl(target);
+        },
+        error: (err: HttpErrorResponse) => {
+          if (err.status === 401) {
+            this.errorMessage = 'Credenciales inválidas.';
+          } else if (err.status === 422) {
+            this.errorMessage = 'Revisa los campos.';
+          } else {
+            this.errorMessage = 'No se pudo conectar con el servidor.';
+          }
         }
-      }
-    });
+      });
   }
 
   private safeReturnUrl(): string {
