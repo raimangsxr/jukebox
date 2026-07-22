@@ -69,7 +69,23 @@ changes:
     contract: backend-api
     description: Admin per-key YouTube API daily usage tracking with SSE live updates.
 
+  - id: 010-hardening-and-polish
+    path: specs/changes/010-hardening-and-polish/
+    status: draft
+    contract: backend-api
+    modifies:
+      - backend-api
+      - app-core
+      - ops-platform
+    description: >-
+      Consolidated hardening + completion + hygiene: server-side SSE audience
+      isolation, secrets/CORS/token hardening, non-blocking outbound I/O,
+      single-replica documentation, rate-limiter/quota/FK robustness fixes,
+      editable event-config (GET/PUT /api/event-config + admin editor + theme),
+      kiosk/admin UX polish, expanded tests, and SDD/repo hygiene. Excludes new
+      product features (review section 4).
+
 active:
-  change: null
+  change: 010-hardening-and-polish
   contract: specs/contracts/backend-api/contract.md
   context_pack: null
