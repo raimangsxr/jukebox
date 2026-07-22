@@ -25,13 +25,16 @@ def get_state(
 @router.get("/events/stream")
 async def events_stream(
     request: Request,
-    _subscriber: StreamSubscriber,
+    subscriber: StreamSubscriber,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     async def event_generator():
         initial = build_state_response(db)
         yield format_state_event(initial)
-        queue = subscribe()
+        queue = subscribe(
+            audience=subscriber.audience,
+            participant_id=subscriber.participant_id,
+        )
         try:
             while True:
                 if await request.is_disconnected():

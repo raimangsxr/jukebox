@@ -15,9 +15,11 @@ import { Subscription } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
+import { EventConfigRead } from '../models/event-config';
 import { AuthService } from '../services/auth.service';
 import { PendingQueueEntryRead } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
+import { EventConfigService } from '../services/event-config.service';
 import { QueueAdminService } from '../services/queue-admin.service';
 
 interface ApiTokenRead {
@@ -56,6 +58,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly queueAdmin = inject(QueueAdminService);
   private readonly displayState = inject(DisplayStateService);
+  private readonly eventConfigService = inject(EventConfigService);
   private readonly cdr = inject(ChangeDetectorRef);
 
   tokens: ApiTokenRead[] = [];
@@ -67,8 +70,16 @@ export class AdminComponent implements OnInit, OnDestroy {
   moderationError: string | null = null;
   copied = false;
   loggingOut = false;
-  moderationBusy = false;
+  playbackBusy = false;
+  private readonly rowBusy = new Set<string>();
   rejectReasons: Record<string, string> = {};
+
+  // Event configuration form (010, US5)
+  eventConfig: EventConfigRead | null = null;
+  configLoading = false;
+  configSaving = false;
+  configError: string | null = null;
+  configSaved = false;
   apiKeyUsage: ApiKeyUsageListResponse | null = null;
   apiKeyUsageError: string | null = null;
   private stateSubscription: Subscription | null = null;
@@ -77,6 +88,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.refreshTokens();
     this.refreshApiKeyUsage();
+    this.loadEventConfig();
     void this.displayState.start();
     this.stateSubscription = this.displayState.state$.subscribe(() => {
       this.refreshPending();
@@ -182,14 +194,20 @@ export class AdminComponent implements OnInit, OnDestroy {
     });
   }
 
+  isRowBusy(id: string): boolean {
+    return this.rowBusy.has(id);
+  }
+
   approveEntry(id: string): void {
-    this.moderationBusy = true;
+    this.rowBusy.add(id);
+    this.cdr.markForCheck();
     this.queueAdmin.approve(id).subscribe({
       next: () => {
-        this.moderationBusy = false;
+        this.rowBusy.delete(id);
+        this.cdr.markForCheck();
       },
       error: err => {
-        this.moderationBusy = false;
+        this.rowBusy.delete(id);
         this.moderationError = this.mapQueueError(err);
         this.cdr.markForCheck();
       }
@@ -197,13 +215,15 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   rejectEntry(id: string): void {
-    this.moderationBusy = true;
+    this.rowBusy.add(id);
+    this.cdr.markForCheck();
     this.queueAdmin.reject(id, this.rejectReasons[id]).subscribe({
       next: () => {
-        this.moderationBusy = false;
+        this.rowBusy.delete(id);
+        this.cdr.markForCheck();
       },
       error: err => {
-        this.moderationBusy = false;
+        this.rowBusy.delete(id);
         this.moderationError = this.mapQueueError(err);
         this.cdr.markForCheck();
       }
@@ -211,19 +231,69 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   advancePlayback(): void {
-    this.moderationBusy = true;
+    this.playbackBusy = true;
     this.queueAdmin.skipOrStart().subscribe({
       next: state => {
-        this.moderationBusy = false;
+        this.playbackBusy = false;
         this.displayState.applyState(state);
         this.cdr.markForCheck();
       },
       error: err => {
-        this.moderationBusy = false;
+        this.playbackBusy = false;
         this.moderationError = this.mapQueueError(err);
         this.cdr.markForCheck();
       }
     });
+  }
+
+  loadEventConfig(): void {
+    this.configLoading = true;
+    this.configError = null;
+    this.eventConfigService.getConfig().subscribe({
+      next: config => {
+        this.eventConfig = { ...config };
+        this.configLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.configLoading = false;
+        this.configError = 'No se pudo cargar la configuración del evento.';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  saveEventConfig(): void {
+    if (!this.eventConfig) {
+      return;
+    }
+    this.configSaving = true;
+    this.configSaved = false;
+    this.configError = null;
+    this.eventConfigService
+      .updateConfig({
+        name: this.eventConfig.name,
+        subtitle: this.eventConfig.subtitle,
+        app_height_px: this.eventConfig.app_height_px,
+        theme: this.eventConfig.theme,
+        queue_visible_count: this.eventConfig.queue_visible_count
+      })
+      .subscribe({
+        next: config => {
+          this.eventConfig = { ...config };
+          this.configSaving = false;
+          this.configSaved = true;
+          this.cdr.markForCheck();
+        },
+        error: err => {
+          this.configSaving = false;
+          this.configError =
+            err?.status === 422
+              ? 'Revisa los campos: valores fuera de rango.'
+              : 'No se pudo guardar la configuración del evento.';
+          this.cdr.markForCheck();
+        }
+      });
   }
 
   youtubeUrl(videoId: string): string {

@@ -9,7 +9,18 @@ from .bootstrap import ensure_event_config, ensure_jukebox_runtime, ensure_opera
 from .config import get_settings
 from .database import SessionLocal
 from .middleware import FrameAncestorsMiddleware
-from .routers import auth, auth_google, health, participant, queue, state, tokens, votes, youtube
+from .routers import (
+    auth,
+    auth_google,
+    event_config,
+    health,
+    participant,
+    queue,
+    state,
+    tokens,
+    votes,
+    youtube,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -46,7 +57,9 @@ def create_app() -> FastAPI:
             allow_origins=origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["*"],
+            # Scoped to the headers the SPA actually sends; `*` is disallowed
+            # alongside credentials (010-hardening-and-polish, FR-007).
+            allow_headers=["Content-Type"],
         )
 
     app.add_middleware(
@@ -65,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_google.router)
     app.include_router(tokens.router)
     app.include_router(state.router)
+    app.include_router(event_config.router)
     app.include_router(queue.router)
     app.include_router(participant.router)
     app.include_router(votes.router)

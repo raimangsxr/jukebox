@@ -30,7 +30,7 @@ from app.models import (
     User,
     Vote,
 )
-from app.security import generate_token, hash_token
+from app.security import generate_token, hash_token, token_prefix
 from app.services.state_service import get_or_create_runtime
 from app.services import sse_hub
 
@@ -118,6 +118,7 @@ def embed_token(db_session: Session, operator_credentials: dict[str, str]) -> di
         id=str(uuid4()),
         user_id=user.id,
         label="pytest-embed",
+        token_prefix=token_prefix(plaintext),
         token_hash=hash_token(plaintext),
     )
     db_session.add(row)
@@ -318,8 +319,10 @@ def collect_sse_events_after(
     *,
     event_type: str | None = None,
     timeout: float = 2.0,
+    audience: str = sse_hub.OPERATOR,
+    participant_id: str | None = None,
 ) -> list[tuple[str | None, dict | None]]:
-    queue = sse_hub.subscribe()
+    queue = sse_hub.subscribe(audience=audience, participant_id=participant_id)
     try:
         action()
         return asyncio.run(

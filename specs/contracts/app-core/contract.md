@@ -1,6 +1,6 @@
 # app-core Contract
 
-Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search** (2026-07-18).
+Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search**, **009-admin-api-key-usage**, **010-hardening-and-polish** (2026-07-22).
 
 ## Purpose
 
@@ -160,6 +160,18 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 
 - `bull:config`, `bull:resize`, `bull:ping` postMessage — dedicated kiosk-screen change
 
+## Hardening & polish (010)
+
+- **Evento editor**: the admin "Evento" section is an editable Spanish form (Nombre, Subtítulo, Altura del display, Tema, Canciones visibles) bound to `GET/PUT /api/event-config` via `EventConfigService`; validation and success feedback. Replaces the previous "próximamente" placeholder.
+- **Theme**: `event_config.theme` is applied to the document root (`data-theme`) on kiosk and `/participar` via `theme.util`; only `dark` is supported, unknown values fall back to `dark`.
+- **Kiosk layout**: responsive shell — `app_height_px` is a target (`min(100dvh, …)`), not a hard clip; renders 720p–4K without clipping.
+- **Moderation**: per-row busy state (acting on one pending entry does not disable the others); playback buttons use a separate flag.
+- **QR**: regenerated only when the participation URL changes.
+- **Routing**: unknown routes render a Spanish `NotFoundComponent` (was a silent redirect to `/`).
+- **Dependencies**: unused `@angular/material` and `@angular/cdk` removed.
+- **Dev affordances**: `AuthService.resetForTesting()` is a no-op in production builds.
+- **Tests**: vitest specs for the three guards, the auth interceptor's 401 branching, theme util, and `EventConfigService`.
+
 ## Change history
 
 - **001-foundation-jukebox** — Angular scaffold, four routes, placeholder layouts
@@ -170,3 +182,4 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **007-participant-notifications** — in-app notification toasts on `/participar`
 - **008-youtube-text-search** — YouTube text search UI, dual-path submit, sticky footer
 - **009-admin-api-key-usage** — Admin per-key YouTube API usage table with SSE updates
+- **010-hardening-and-polish** — editable Evento config + theme, responsive kiosk, per-row moderation, QR caching, 404 page, dead-dep removal, guard/interceptor/service tests

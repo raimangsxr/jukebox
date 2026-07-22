@@ -1,6 +1,6 @@
 # backend-api Contract
 
-Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search**, **009-admin-api-key-usage** (2026-07-19).
+Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search**, **009-admin-api-key-usage**, **010-hardening-and-polish** (2026-07-22).
 
 ## Purpose
 
@@ -55,7 +55,13 @@ SSE `event: state` payload matches `StateResponse`. Heartbeat comment every 30s.
 }
 ```
 
-Server broadcasts to all SSE subscribers; kiosk/operator clients ignore `notification` events. `/participar` filters by `participant_id` before showing a toast.
+**SSE audience routing (010):** the server tags each subscriber at connect time with its authorizing audience (`operator` or `participant:{id}`) and routes events server-side:
+
+- `event: state` → all authorized subscribers.
+- `event: api_key_usage` → **operator** subscribers only (never participants).
+- `event: notification` → **only** the target `participant_id`'s subscriber(s).
+
+Ambiguous subscribers default to participant scope (least privilege). This replaces the earlier broadcast-to-all + client-side filtering.
 
 No `notification` on reject, vote reorder, or entries without `submitted_by_participant_id`.
 
@@ -224,7 +230,7 @@ All helpers are idempotent.
 
 ## CORS
 
-When `JUKEBOX_CORS_ALLOW_ORIGINS` is non-empty, credentials are allowed for listed origins.
+When `JUKEBOX_CORS_ALLOW_ORIGINS` is non-empty, credentials are allowed for listed origins. `allow_headers` is scoped to `Content-Type` (not `*`) alongside credentials (010).
 
 ## Persistence
 
@@ -252,9 +258,34 @@ Extend `participants`: `google_sub` (unique nullable), `email`, `avatar_url`.
 
 Table: `youtube_api_key_daily_usage` — `key_hash`, `quota_day` (Pacific date), `used_count`, `exhausted`, `updated_at`; unique `(key_hash, quota_day)`.
 
-## Planned (007+)
+### Alembic 0007 (010)
 
-- `GET` / `PUT /api/event-config`
+Add indexed non-secret `token_prefix` to `api_tokens`.
+
+### Alembic 0008 (010)
+
+Null orphan `queue_entries.submitted_by_participant_id`, then add FK → `participants.id` (`ON DELETE SET NULL`) + index. Reversible.
+
+## Event configuration (010)
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| GET | `/api/event-config` | operator session | 200 `EventConfigRead` |
+| PUT | `/api/event-config` | operator session | 200 `EventConfigRead` |
+
+Operates on the singleton `event_config` row (`name`, `subtitle`, `app_height_px`, `theme`, `queue_visible_count`, `updated_at`); no migration (columns already exist). `PUT` validates: `name` non-empty (≤200), `subtitle` ≤200, `app_height_px` 240–4320, `queue_visible_count` 1–50, `theme` ∈ {`dark`}; invalid → `422`. On success persists, bumps `revision`, and broadcasts `state` over SSE. Participant/anonymous → `401`.
+
+## Auth-token lookup (010)
+
+`api_tokens` has an indexed non-secret `token_prefix` (first 8 chars of the plaintext). Token exchange locates the candidate by prefix then verifies a single bcrypt hash (no full-table scan). Tokens created before 010 have a NULL prefix, no longer validate, and must be regenerated.
+
+## Referential integrity (010)
+
+`queue_entries.submitted_by_participant_id` is a foreign key to `participants.id` (`ON DELETE SET NULL`); migration `0008` nulls orphan references before adding it.
+
+## Concurrency / scaling (010)
+
+SSE fan-out, the search rate limiter (with idle-bucket eviction), YouTube key rotation, and per-key quota counters are in-process. The backend runs with a single replica (see ops-platform); outbound HTTP runs in synchronous FastAPI path operations (threadpool), so the async event loop is not blocked.
 
 ## Configuration
 
@@ -311,3 +342,4 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - **007-participant-notifications** — SSE `notification` events, `notification_service`, no migration
 - **008-youtube-text-search** — YouTube text search API, multi-key pool, dual-path `/participar` submit UX
 - **009-admin-api-key-usage** — per-key YouTube API daily usage tracking, `GET /api/youtube/api-keys/usage`, SSE `api_key_usage`
+- **010-hardening-and-polish** — server-side SSE audience routing; `GET`/`PUT /api/event-config`; token prefix lookup (Alembic 0007); submitter FK (Alembic 0008); rate-limiter eviction; deterministic quota reset-on-read; unified submit metadata validation; CORS `allow_headers` scoping; single-replica documentation

@@ -2,17 +2,20 @@
   display: block;
 }
 
+/* Responsive kiosk shell (010-hardening-and-polish, FR-020): always fits the
+   viewport (720p–4K, dvh handles mobile browser chrome) and never clips its
+   content. `app_height_px` is honored as a target height when it is smaller
+   than the viewport, not as a hard clip. */
 .kiosk-root {
-  height: var(--jukebox-app-height, 720px);
-  max-height: 100vh;
+  height: min(100dvh, var(--jukebox-app-height, 100dvh));
+  max-height: 100dvh;
 }
 
 .kiosk-top {
-  flex: 1 1 90%;
+  flex: 1 1 auto;
 }
 
 .kiosk-queue-strip {
-  flex: 0 0 10%;
+  flex: 0 0 auto;
   min-height: 4.5rem;
-  max-height: 12%;
 }

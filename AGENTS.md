@@ -12,7 +12,7 @@
 
 ## Active SDD work
 
-No active change. Last completed: **008-youtube-text-search** (implemented).
+No active change. Last completed: **010-hardening-and-polish** (implemented) — consolidated remediation/completion/hygiene across all three contracts.
 
 To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 

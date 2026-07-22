@@ -5,6 +5,7 @@ import { BehaviorSubject, Observable, Subscription, firstValueFrom } from 'rxjs'
 import { environment } from '../../environments/environment';
 import { StateResponse } from '../models/jukebox-state';
 import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
+import { applyTheme } from '../theme.util';
 
 @Injectable({ providedIn: 'root' })
 export class DisplayStateService implements OnDestroy {
@@ -30,6 +31,11 @@ export class DisplayStateService implements OnDestroy {
 
   get snapshot(): StateResponse | null {
     return this.stateSubject.value;
+  }
+
+  private emitState(state: StateResponse): void {
+    applyTheme(state.event_config?.theme);
+    this.stateSubject.next(state);
   }
 
   get apiKeyUsageSnapshot(): ApiKeyUsageListResponse | null {
@@ -58,14 +64,14 @@ export class DisplayStateService implements OnDestroy {
   }
 
   applyState(state: import('../models/jukebox-state').StateResponse): void {
-    this.stateSubject.next(state);
+    this.emitState(state);
   }
 
   async refresh(): Promise<StateResponse> {
     const state = await firstValueFrom(
       this.http.get<StateResponse>(`${this.baseUrl}/state`)
     );
-    this.stateSubject.next(state);
+    this.emitState(state);
     return state;
   }
 
@@ -74,7 +80,7 @@ export class DisplayStateService implements OnDestroy {
       const state = await firstValueFrom(
         this.http.post<StateResponse>(`${this.baseUrl}/queue/skip`, {})
       );
-      this.stateSubject.next(state);
+      this.emitState(state);
     } catch {
       // 409 when nothing to advance — ignore on natural video end
     }
@@ -90,7 +96,7 @@ export class DisplayStateService implements OnDestroy {
     this.eventSource.addEventListener('state', (event: MessageEvent<string>) => {
       try {
         const state = JSON.parse(event.data) as StateResponse;
-        this.stateSubject.next(state);
+        this.emitState(state);
         this.reconnectAttempt = 0;
       } catch {
         // ignore malformed payloads

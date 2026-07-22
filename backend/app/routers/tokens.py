@@ -14,7 +14,7 @@ from ..schemas import (
     TokenCreateResponse,
     TokenListResponse,
 )
-from ..security import CurrentUser, generate_token, hash_token
+from ..security import CurrentUser, generate_token, hash_token, token_prefix
 
 
 router = APIRouter(prefix="/api/tokens", tags=["tokens"])
@@ -47,6 +47,7 @@ def create_token(
         id=str(uuid4()),
         user_id=current_user.id,
         label=payload.label,
+        token_prefix=token_prefix(plaintext),
         token_hash=hash_token(plaintext),
     )
     db.add(row)

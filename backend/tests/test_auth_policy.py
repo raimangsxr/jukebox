@@ -37,6 +37,10 @@ PROTECTED_PATHS_005 = {
     "/api/youtube/search": {"get"},
 }
 
+PROTECTED_PATHS_010 = {
+    "/api/event-config": {"get", "put"},
+}
+
 
 def test_public_route_policy_matches_contract():
     schema = create_app().openapi()["paths"]
@@ -60,6 +64,15 @@ def test_protected_routes_exist_in_openapi():
         assert path in schema, f"missing path {path}"
         for method in methods:
             assert method in schema[path], f"{path} missing {method}"
+    for path, methods in PROTECTED_PATHS_010.items():
+        assert path in schema, f"missing path {path}"
+        for method in methods:
+            assert method in schema[path], f"{path} missing {method}"
+
+
+def test_event_config_requires_operator_auth(client):
+    assert client.get("/api/event-config").status_code == 401
+    assert client.put("/api/event-config", json={}).status_code == 401
 
 
 def test_health_is_public(client):

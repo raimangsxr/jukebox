@@ -54,6 +54,7 @@ export class QrPanelComponent implements OnChanges {
   @Input() eventConfig: EventConfigSummary | null = null;
 
   qrDataUrl: string | null = null;
+  private renderedTarget: string | null = null;
 
   ngOnChanges(_changes: SimpleChanges): void {
     void this.renderQr();
@@ -61,6 +62,12 @@ export class QrPanelComponent implements OnChanges {
 
   private async renderQr(): Promise<void> {
     const target = `${window.location.origin}/participar`;
+    // The participation URL is stable, so regenerate only when it actually
+    // changes instead of on every change-detection cycle (FR-022).
+    if (target === this.renderedTarget && this.qrDataUrl) {
+      return;
+    }
+    this.renderedTarget = target;
     this.qrDataUrl = await QRCode.toDataURL(target, { margin: 1, width: 256 });
   }
 }

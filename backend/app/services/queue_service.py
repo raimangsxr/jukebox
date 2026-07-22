@@ -17,7 +17,6 @@ from .notification_service import emit_song_approved, emit_song_up_next
 from .state_service import build_state_response, bump_revision, get_now_playing, get_or_create_runtime
 from .youtube_meta import (
     fetch_youtube_duration_sec,
-    fetch_youtube_metadata,
     fetch_youtube_metadata_strict,
     parse_youtube_video_id,
 )
@@ -134,7 +133,15 @@ def create_pending_entry(db: Session, youtube_url_or_id: str) -> QueueEntry:
             status_code=status.HTTP_409_CONFLICT,
             detail="video already in queue",
         )
-    title, thumbnail = fetch_youtube_metadata(video_id)
+    # Same strict metadata validation as the participant submit path so both
+    # reject invalid references consistently (010-hardening-and-polish, FR-013).
+    try:
+        title, thumbnail = fetch_youtube_metadata_strict(video_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid youtube reference",
+        ) from None
     entry = QueueEntry(
         id=str(uuid4()),
         youtube_video_id=video_id,
