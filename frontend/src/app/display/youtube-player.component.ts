@@ -45,8 +45,23 @@ const YT_ENDED = 0;
   template: `
     <div class="flex h-full flex-col overflow-hidden rounded-xl border border-white/10 bg-jukebox-surface">
       <div class="relative min-h-0 flex-1">
+        <button
+          *ngIf="!activated"
+          type="button"
+          (click)="activate()"
+          class="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-jukebox-surface p-6 text-center transition hover:bg-white/5"
+        >
+          <span
+            class="flex h-16 w-16 items-center justify-center rounded-full bg-jukebox-primary text-3xl text-black"
+          >▶</span>
+          <span class="text-lg font-semibold">Activar reproducción</span>
+          <span class="max-w-xs text-sm text-jukebox-muted">
+            Toca una vez para habilitar el sonido. Después, las canciones se
+            reproducirán solas cuando el moderador inicie la cola.
+          </span>
+        </button>
         <div
-          *ngIf="!videoId"
+          *ngIf="activated && !videoId"
           class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-jukebox-surface p-6 text-center"
         >
           <p class="text-sm text-jukebox-muted">Esperando canción</p>
@@ -70,6 +85,14 @@ export class YoutubePlayerComponent implements OnChanges {
 
   readonly playerElementId = `yt-player-${Math.random().toString(36).slice(2)}`;
 
+  /**
+   * Los navegadores bloquean el autoplay con sonido hasta que la pestaña recibe
+   * un gesto del usuario. La pantalla kiosk arranca con un overlay de activación;
+   * al pulsarlo una vez, el navegador concede autoplay-con-sonido durante toda la
+   * sesión, de modo que cada canción que inicie el moderador se reproduce sola.
+   */
+  activated = false;
+
   private player: YtPlayer | null = null;
   private apiReady = false;
   private pendingVideoId: string | null = null;
@@ -80,7 +103,22 @@ export class YoutubePlayerComponent implements OnChanges {
     }
   }
 
+  activate(): void {
+    if (this.activated) {
+      return;
+    }
+    this.activated = true;
+    // Precargamos la API de YouTube dentro del gesto del usuario y arrancamos el
+    // vídeo actual (si lo hay); así el desbloqueo de autoplay queda asociado al click.
+    void this.ensureApi();
+    void this.syncVideo();
+  }
+
   private async syncVideo(): Promise<void> {
+    if (!this.activated) {
+      // Esperamos al gesto de activación único antes de crear el player.
+      return;
+    }
     if (!this.videoId) {
       this.destroyPlayer();
       return;
