@@ -1,8 +1,52 @@
 import asyncio
 import json
+from dataclasses import dataclass
 from typing import Any
 
-_subscribers: list[asyncio.Queue[str]] = []
+# SSE audience tags. Every subscriber is classified at subscribe time so the
+# server can route events by audience instead of broadcasting everything to
+# everyone (010-hardening-and-polish, FR-001..FR-004).
+OPERATOR = "operator"
+PARTICIPANT = "participant"
+
+
+@dataclass
+class _Subscriber:
+    queue: "asyncio.Queue[str]"
+    audience: str
+    participant_id: str | None = None
+
+
+_subscribers: list[_Subscriber] = []
+
+
+def subscribe(
+    audience: str = PARTICIPANT,
+    participant_id: str | None = None,
+) -> "asyncio.Queue[str]":
+    """Register an SSE subscriber.
+
+    Defaults to the least-privileged audience (``participant``) so an ambiguous
+    caller never receives operator-only events.
+    """
+    queue: asyncio.Queue[str] = asyncio.Queue()
+    _subscribers.append(
+        _Subscriber(queue=queue, audience=audience, participant_id=participant_id)
+    )
+    return queue
+
+
+def unsubscribe(queue: "asyncio.Queue[str]") -> None:
+    for sub in list(_subscribers):
+        if sub.queue is queue:
+            _subscribers.remove(sub)
+
+
+def _put(sub: _Subscriber, message: str) -> None:
+    try:
+        sub.queue.put_nowait(message)
+    except asyncio.QueueFull:
+        pass
 
 
 def format_state_event(state: Any) -> str:
@@ -13,24 +57,11 @@ def format_state_event(state: Any) -> str:
     return f"event: state\ndata: {json.dumps(payload)}\n\n"
 
 
-def subscribe() -> asyncio.Queue[str]:
-    queue: asyncio.Queue[str] = asyncio.Queue()
-    _subscribers.append(queue)
-    return queue
-
-
-def unsubscribe(queue: asyncio.Queue[str]) -> None:
-    if queue in _subscribers:
-        _subscribers.remove(queue)
-
-
 def broadcast_state(state: Any) -> None:
+    """`state` is public to every authorized subscriber (operator + participant)."""
     message = format_state_event(state)
-    for queue in list(_subscribers):
-        try:
-            queue.put_nowait(message)
-        except asyncio.QueueFull:
-            pass
+    for sub in list(_subscribers):
+        _put(sub, message)
 
 
 def format_notification_event(notification: Any) -> str:
@@ -41,13 +72,17 @@ def format_notification_event(notification: Any) -> str:
     return f"event: notification\ndata: {json.dumps(payload)}\n\n"
 
 
-def broadcast_notification(notification: Any) -> None:
+def deliver_notification(participant_id: str, notification: Any) -> None:
+    """Deliver a notification ONLY to the target participant's subscribers.
+
+    Other participants, operators, and kiosk clients never receive it.
+    """
+    if not participant_id:
+        return
     message = format_notification_event(notification)
-    for queue in list(_subscribers):
-        try:
-            queue.put_nowait(message)
-        except asyncio.QueueFull:
-            pass
+    for sub in list(_subscribers):
+        if sub.audience == PARTICIPANT and sub.participant_id == participant_id:
+            _put(sub, message)
 
 
 def format_api_key_usage_event(usage: Any) -> str:
@@ -59,9 +94,8 @@ def format_api_key_usage_event(usage: Any) -> str:
 
 
 def broadcast_api_key_usage(usage: Any) -> None:
+    """API-key usage is operator-only; participant streams never receive it."""
     message = format_api_key_usage_event(usage)
-    for queue in list(_subscribers):
-        try:
-            queue.put_nowait(message)
-        except asyncio.QueueFull:
-            pass
+    for sub in list(_subscribers):
+        if sub.audience == OPERATOR:
+            _put(sub, message)

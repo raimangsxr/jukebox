@@ -1,5 +1,7 @@
 """SSE stream tests."""
 
+from app.schemas import NotificationEventRead
+from app.services import sse_hub
 from app.services.state_service import bump_revision
 
 from .conftest import collect_sse_events_after
@@ -56,6 +58,8 @@ def test_sse_stream_includes_notification_without_blocking_state(
     events = collect_sse_events_after(
         lambda: authed_client.post(f"/api/queue/{pending_entry.id}/approve"),
         timeout=2.5,
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
 
     event_types = [event_type for event_type, _ in events if event_type]
@@ -64,4 +68,60 @@ def test_sse_stream_includes_notification_without_blocking_state(
     state_events = [payload for et, payload in events if et == "state"]
     assert state_events
     assert state_events[-1]["queue"]
+
+
+def test_state_broadcast_reaches_all_audiences(db_session):
+    """`state` is public: both operator and participant subscribers receive it."""
+    operator_q = sse_hub.subscribe(audience=sse_hub.OPERATOR)
+    participant_q = sse_hub.subscribe(
+        audience=sse_hub.PARTICIPANT, participant_id="p-1"
+    )
+    try:
+        sse_hub.broadcast_state({"revision": 7, "queue": []})
+        assert operator_q.get_nowait().startswith("event: state")
+        assert participant_q.get_nowait().startswith("event: state")
+    finally:
+        sse_hub.unsubscribe(operator_q)
+        sse_hub.unsubscribe(participant_q)
+
+
+def test_api_key_usage_reaches_operators_only(db_session):
+    """FR-001: participant streams never receive operator-only api_key_usage."""
+    operator_q = sse_hub.subscribe(audience=sse_hub.OPERATOR)
+    participant_q = sse_hub.subscribe(
+        audience=sse_hub.PARTICIPANT, participant_id="p-1"
+    )
+    try:
+        sse_hub.broadcast_api_key_usage({"keys": [], "daily_limit": 100})
+        assert operator_q.qsize() == 1
+        assert operator_q.get_nowait().startswith("event: api_key_usage")
+        assert participant_q.qsize() == 0
+    finally:
+        sse_hub.unsubscribe(operator_q)
+        sse_hub.unsubscribe(participant_q)
+
+
+def test_notification_delivered_only_to_target_participant(db_session):
+    """FR-002: a notification reaches only the target participant's stream."""
+    target_q = sse_hub.subscribe(audience=sse_hub.PARTICIPANT, participant_id="p-1")
+    other_q = sse_hub.subscribe(audience=sse_hub.PARTICIPANT, participant_id="p-2")
+    operator_q = sse_hub.subscribe(audience=sse_hub.OPERATOR)
+    try:
+        sse_hub.deliver_notification(
+            "p-1",
+            NotificationEventRead(
+                type="song.approved",
+                queue_entry_id="q-1",
+                participant_id="p-1",
+                title="Mi canción",
+            ),
+        )
+        assert target_q.qsize() == 1
+        assert target_q.get_nowait().startswith("event: notification")
+        assert other_q.qsize() == 0
+        assert operator_q.qsize() == 0
+    finally:
+        sse_hub.unsubscribe(target_q)
+        sse_hub.unsubscribe(other_q)
+        sse_hub.unsubscribe(operator_q)
 

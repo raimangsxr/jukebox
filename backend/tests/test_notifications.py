@@ -3,6 +3,7 @@
 from uuid import uuid4
 
 from app.models import QueueEntryStatus
+from app.services import sse_hub
 from app.services.state_service import get_or_create_runtime
 
 from .conftest import _make_queue_entry, collect_sse_events_after
@@ -20,6 +21,8 @@ def test_song_approved_on_approve(authed_client, db_session, participant):
     events = collect_sse_events_after(
         lambda: authed_client.post(f"/api/queue/{pending.id}/approve"),
         event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
 
     assert len(events) == 1
@@ -53,6 +56,8 @@ def test_song_approved_not_emitted_on_reject(authed_client, db_session, particip
             json={"reason": "no"},
         ),
         event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
     assert events == []
 
@@ -80,6 +85,8 @@ def test_song_up_next_on_skip(authed_client, db_session, participant):
     events = collect_sse_events_after(
         lambda: authed_client.post("/api/queue/skip"),
         event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
 
     assert len(events) == 1
@@ -102,6 +109,8 @@ def test_song_up_next_on_idle_start(authed_client, db_session, participant):
     events = collect_sse_events_after(
         lambda: authed_client.post("/api/queue/skip"),
         event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
 
     assert len(events) == 1
@@ -153,6 +162,8 @@ def test_song_up_next_not_emitted_when_only_playing(
     events = collect_sse_events_after(
         lambda: authed_client.post("/api/queue/skip"),
         event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
     assert events == []
 
@@ -171,6 +182,8 @@ def test_notification_payload_uses_owner_participant_id(
     events = collect_sse_events_after(
         lambda: authed_client.post(f"/api/queue/{pending.id}/approve"),
         event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant.id,
     )
 
     assert len(events) == 1

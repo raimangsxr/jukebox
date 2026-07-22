@@ -318,8 +318,10 @@ def collect_sse_events_after(
     *,
     event_type: str | None = None,
     timeout: float = 2.0,
+    audience: str = sse_hub.OPERATOR,
+    participant_id: str | None = None,
 ) -> list[tuple[str | None, dict | None]]:
-    queue = sse_hub.subscribe()
+    queue = sse_hub.subscribe(audience=audience, participant_id=participant_id)
     try:
         action()
         return asyncio.run(

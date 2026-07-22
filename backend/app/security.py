@@ -1,4 +1,5 @@
 import secrets
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from .database import get_db
 from .models import ApiToken, Participant, User
+from .services import sse_hub
 from .services.participant_session import read_participant_id
 
 
@@ -97,22 +99,35 @@ def get_current_participant(
 CurrentParticipant = Annotated[Participant, Depends(get_current_participant)]
 
 
+@dataclass
+class StreamIdentity:
+    """Audience of an authorized `/api/events/stream` connection.
+
+    Used by the SSE hub to route events (operator-only vs participant-targeted).
+    """
+
+    audience: str
+    participant_id: str | None = None
+
+
 def get_stream_subscriber(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-) -> None:
+) -> StreamIdentity:
     user_id = request.session.get("user_id")
     if user_id:
         user = db.get(User, user_id)
         if user is not None:
-            return
+            return StreamIdentity(audience=sse_hub.OPERATOR)
     participant_id = read_participant_id(request)
     if participant_id and db.get(Participant, participant_id) is not None:
-        return
+        return StreamIdentity(
+            audience=sse_hub.PARTICIPANT, participant_id=participant_id
+        )
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="not authenticated",
     )
 
 
-StreamSubscriber = Annotated[None, Depends(get_stream_subscriber)]
+StreamSubscriber = Annotated[StreamIdentity, Depends(get_stream_subscriber)]
