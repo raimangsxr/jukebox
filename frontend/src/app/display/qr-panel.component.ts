@@ -17,35 +17,37 @@ import { EventConfigSummary } from '../models/jukebox-state';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
-      class="flex h-full min-h-0 flex-col items-center justify-center gap-2 overflow-y-auto rounded-xl border border-white/10 bg-jukebox-surface p-3 text-center md:gap-3 md:p-4"
+      class="flex h-full min-h-0 items-center gap-3 overflow-y-auto rounded-xl border border-white/10 bg-jukebox-surface p-3 md:gap-4 md:p-4"
     >
-      <h2
-        class="bg-gradient-to-r from-jukebox-accent via-fuchsia-400 to-violet-300 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent md:text-3xl"
-      >
-        Participa
-      </h2>
-
-      <p *ngIf="eventConfig?.subtitle" class="text-xs text-jukebox-muted md:text-sm">
-        {{ eventConfig.subtitle }}
-      </p>
-
       <img
         *ngIf="qrDataUrl"
         [src]="qrDataUrl"
         alt="QR para participar"
-        class="h-40 w-40 shrink-0 rounded-xl bg-white p-2 shadow-lg shadow-jukebox-accent/20 md:h-48 md:w-48"
+        class="h-32 w-32 shrink-0 rounded-xl bg-white p-2 shadow-lg shadow-jukebox-accent/20 md:h-40 md:w-40"
       />
 
-      <ol class="w-full max-w-[15rem] list-decimal space-y-1 pl-4 text-left text-[11px] leading-snug text-jukebox-muted md:max-w-none md:text-xs">
-        <li>Escanea el código QR con tu móvil.</li>
-        <li>Identifícate.</li>
-        <li>Envía una canción o búscala en YouTube.</li>
-        <li>Vota tus favoritas en la cola.</li>
-      </ol>
+      <div class="flex min-w-0 flex-1 flex-col gap-1 text-left md:gap-2">
+        <h2
+          class="bg-gradient-to-r from-jukebox-accent via-fuchsia-400 to-violet-300 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent md:text-3xl"
+        >
+          Participa
+        </h2>
 
-      <p class="text-[10px] text-jukebox-muted/90 md:text-xs">
-        Tienes <span class="font-semibold text-jukebox-accent">2 votos cada 5 minutos</span>.
-      </p>
+        <p *ngIf="eventConfig?.subtitle" class="text-xs text-jukebox-muted md:text-sm">
+          {{ eventConfig.subtitle }}
+        </p>
+
+        <ol class="list-decimal space-y-0.5 pl-4 text-[11px] leading-snug text-jukebox-muted md:text-xs">
+          <li>Escanea el código QR con tu móvil.</li>
+          <li>Identifícate.</li>
+          <li>Envía una canción o búscala en YouTube.</li>
+          <li>Vota tus favoritas en la cola.</li>
+        </ol>
+
+        <p class="text-[10px] text-jukebox-muted/90 md:text-xs">
+          Tienes <span class="font-semibold text-jukebox-accent">2 votos cada 5 minutos</span>.
+        </p>
+      </div>
     </div>
   `,
 })

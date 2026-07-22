@@ -10,11 +10,15 @@ import { QueueEntryRead } from '../models/jukebox-state';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex h-full flex-col rounded-xl border border-white/10 bg-jukebox-surface px-3 py-2">
-      <div class="mb-1 shrink-0">
-        <p class="text-xs font-semibold uppercase tracking-[0.12em] text-jukebox-primary">
-          Próximas canciones y votos en cada una
+      <div class="mb-2 shrink-0">
+        <h2
+          class="bg-gradient-to-r from-jukebox-accent via-fuchsia-400 to-violet-300 bg-clip-text text-2xl font-extrabold tracking-tight text-transparent md:text-3xl"
+        >
+          Próximas canciones
+        </h2>
+        <p class="text-[11px] leading-snug text-jukebox-muted md:text-xs">
+          <span class="font-semibold text-jukebox-accent">Las más votadas suenan antes</span> — el número de cada tarjeta son sus votos.
         </p>
-        <p class="text-[10px] text-jukebox-muted">El número en cada tarjeta es el total de votos</p>
       </div>
       <div *ngIf="entries.length; else empty" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         <div
