@@ -157,6 +157,10 @@ export class AuthService {
   }
 
   resetForTesting(): void {
+    // Test-only affordance; no-op in production builds (010, FR-030).
+    if (environment.production) {
+      return;
+    }
     this.user = null;
     this.displayError = null;
     this.tokenBootstrapAttempted = false;

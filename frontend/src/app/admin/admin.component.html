@@ -21,7 +21,7 @@
         <button
           type="button"
           class="rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-          [disabled]="!canStartPlayback || moderationBusy"
+          [disabled]="!canStartPlayback || playbackBusy"
           (click)="advancePlayback()"
         >
           Iniciar reproducción
@@ -29,7 +29,7 @@
         <button
           type="button"
           class="rounded-lg border border-white/20 px-3 py-1.5 text-sm disabled:opacity-50"
-          [disabled]="!canSkipPlayback || moderationBusy"
+          [disabled]="!canSkipPlayback || playbackBusy"
           (click)="advancePlayback()"
         >
           Saltar canción
@@ -83,7 +83,7 @@
                 <button
                   type="button"
                   class="rounded bg-green-600/80 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                  [disabled]="moderationBusy"
+                  [disabled]="isRowBusy(entry.id)"
                   (click)="approveEntry(entry.id)"
                 >
                   Aprobar
@@ -91,7 +91,7 @@
                 <button
                   type="button"
                   class="rounded bg-red-600/70 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                  [disabled]="moderationBusy"
+                  [disabled]="isRowBusy(entry.id)"
                   (click)="rejectEntry(entry.id)"
                 >
                   Rechazar
@@ -161,8 +161,84 @@
   </section>
 
   <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
-    <h2 class="mb-2 font-semibold">Evento</h2>
-    <p class="text-sm text-jukebox-muted">Nombre, subtítulo y altura del display (próximamente).</p>
+    <h2 class="mb-4 font-semibold">Evento</h2>
+
+    <p *ngIf="configLoading" class="text-sm text-jukebox-muted">Cargando configuración…</p>
+    <p *ngIf="configError" class="mb-4 text-sm text-red-400">{{ configError }}</p>
+
+    <form
+      *ngIf="eventConfig as cfg"
+      class="grid gap-4 sm:grid-cols-2"
+      (ngSubmit)="saveEventConfig(); $event.preventDefault()"
+    >
+      <label class="flex flex-col gap-1 text-sm sm:col-span-2">
+        <span class="text-jukebox-muted">Nombre</span>
+        <input
+          class="rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2"
+          type="text"
+          name="cfgName"
+          [(ngModel)]="cfg.name"
+          maxlength="200"
+          required
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm sm:col-span-2">
+        <span class="text-jukebox-muted">Subtítulo</span>
+        <input
+          class="rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2"
+          type="text"
+          name="cfgSubtitle"
+          [(ngModel)]="cfg.subtitle"
+          maxlength="200"
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-jukebox-muted">Altura del display (px)</span>
+        <input
+          class="rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2 tabular-nums"
+          type="number"
+          name="cfgHeight"
+          [(ngModel)]="cfg.app_height_px"
+          min="240"
+          max="4320"
+          required
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-jukebox-muted">Canciones visibles en la cola</span>
+        <input
+          class="rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2 tabular-nums"
+          type="number"
+          name="cfgQueueVisible"
+          [(ngModel)]="cfg.queue_visible_count"
+          min="1"
+          max="50"
+          required
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-jukebox-muted">Tema</span>
+        <select
+          class="rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2"
+          name="cfgTheme"
+          [(ngModel)]="cfg.theme"
+        >
+          <option value="dark">Oscuro</option>
+        </select>
+      </label>
+      <div class="flex items-center gap-3 sm:col-span-2">
+        <button
+          type="submit"
+          class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          [disabled]="configSaving"
+        >
+          {{ configSaving ? 'Guardando…' : 'Guardar cambios' }}
+        </button>
+        <span *ngIf="configSaved" class="text-sm text-green-400">
+          Configuración del evento guardada.
+        </span>
+      </div>
+    </form>
   </section>
 
   <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">

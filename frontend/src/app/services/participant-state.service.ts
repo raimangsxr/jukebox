@@ -12,6 +12,7 @@ import {
 import { NotificationToastService } from './notification-toast.service';
 import { notificationTargetsParticipant } from './notification-utils';
 import { ParticipantService } from './participant.service';
+import { applyTheme } from '../theme.util';
 
 @Injectable({ providedIn: 'root' })
 export class ParticipantStateService implements OnDestroy {
@@ -69,6 +70,7 @@ export class ParticipantStateService implements OnDestroy {
       this.http.get<ParticipantStateResponse>(`${this.baseUrl}/participant/state`)
     );
     this.votesRemaining = state.votes_remaining;
+    applyTheme(state.event_config?.theme);
     this.stateSubject.next(state);
     return state;
   }
@@ -128,6 +130,7 @@ export class ParticipantStateService implements OnDestroy {
           votes_remaining: current?.votes_remaining ?? this.votesRemaining,
           max_pending_submissions: current?.max_pending_submissions ?? 2,
         };
+        applyTheme(merged.event_config?.theme);
         this.stateSubject.next(merged);
         void this.refreshSubmissions();
         this.reconnectAttempt = 0;
