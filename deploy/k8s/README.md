@@ -42,6 +42,29 @@ Canonical manifests for production. Mirror to `argocd-apps/manifests/jukebox/` f
 
 Replace `REPLACE_ME` in `secret.yaml` locally before apply, or create the Secret in-cluster with `kubectl create secret generic`.
 
+> **Never commit real secrets.** The repo `.env` is git-ignored (only `.env.example` is tracked). `secret.yaml` carries `REPLACE_ME` placeholders only.
+
+### Rotating `JUKEBOX_SESSION_SECRET`
+
+The session secret signs operator/participant cookies **and** the Google OAuth state token. Rotating it is required if the value may have been exposed, and is a one-time operation:
+
+```bash
+NEW=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+kubectl -n jukebox patch secret jukebox-secrets \
+  --type merge -p "{\"stringData\":{\"JUKEBOX_SESSION_SECRET\":\"$NEW\"}}"
+kubectl -n jukebox rollout restart deploy/jukebox-backend
+```
+
+**Effect**: all operator and participant sessions are invalidated (one-time re-login); in-flight Google OAuth flows must be restarted. The kiosk shows the existing "Sesión caducada" state and re-bootstraps from its embed token.
+
+### Reissuing embed / API tokens
+
+The API-token lookup uses an indexed non-secret prefix (010). **Tokens created before this change no longer validate.** After upgrading:
+
+1. Operator signs in to `/admin` → **Tokens de iframe** → create a new token.
+2. Update the kiosk embed URL `?token=<new-plaintext>` with the regenerated value.
+3. Revoke the old tokens.
+
 ### YouTube search
 
 1. Enable **YouTube Data API v3** in Google Cloud and create an API key.

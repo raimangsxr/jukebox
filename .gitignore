@@ -1,0 +1,7 @@
+# Local environment secrets (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Keep the tracked template
+!.env.example
