@@ -1,6 +1,6 @@
 # ops-platform Contract
 
-Status: active. Consolidated from changes **001-foundation-jukebox** and **003-kubernetes-manifests** (2026-07-17).
+Status: active. Consolidated from changes **001-foundation-jukebox**, **003-kubernetes-manifests**, and **010-hardening-and-polish** (2026-07-22).
 
 ## Purpose
 
@@ -136,7 +136,14 @@ Live ArgoCD Application lives in `argocd-apps/apps/jukebox/`; example ships as `
 - SealedSecrets / External Secrets Operator
 - HPA, PDB, advanced network policies
 
+## Hardening & polish (010)
+
+- **Secrets**: `.env` is git-ignored (only `.env.example` tracked); `deploy/k8s/README.md` documents rotating `JUKEBOX_SESSION_SECRET` (invalidates operator/participant cookies + in-flight OAuth) and the one-time embed/API token reissue required by the token-prefix change.
+- **Single replica**: `backend.yaml` pins `replicas: 1` (annotated); README documents that SSE fan-out, search rate limiting, YouTube key rotation, and per-key quota counters are per-process and require single-replica operation (no HPA) until external state is introduced.
+- **CORS**: `allow_headers` scoped to `Content-Type` (backend-api).
+
 ## Change history
 
 - **001-foundation-jukebox** — compose, Dockerfiles, nginx, release workflow, compose smoke script
 - **003-kubernetes-manifests** — `deploy/k8s/`, GitOps mirror, production env contract
+- **010-hardening-and-polish** — `.env` untracked, session-secret rotation + token reissue docs, single-replica constraint documented, CORS header scoping

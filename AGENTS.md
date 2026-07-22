@@ -12,11 +12,9 @@
 
 ## Active SDD work
 
-Active change: **010-hardening-and-polish** (draft). Last completed: **009-admin-api-key-usage** (implemented).
+No active change. Last completed: **010-hardening-and-polish** (implemented) — consolidated remediation/completion/hygiene across all three contracts.
 
-010 is a consolidated remediation/completion/hygiene change across all three contracts (see `specs/changes/010-hardening-and-polish/spec.md` and `contracts/contract-deltas.md`). Next SDD steps for it: `clarify → checklist → plan → tasks → analyze → implement`.
-
-To start a different feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
+To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 
 ## Suggested flow
 

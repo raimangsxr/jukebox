@@ -55,7 +55,7 @@ Remove the `## Planned (007+)` section (`GET`/`PUT /api/event-config`) from the 
 
 #### Participant theme delivery (changes 005/006)
 
-- `ParticipantStateResponse` (from `GET /api/participant/state`) gains a `theme` field (echo of `event_config.theme`) so `/participar` can apply the theme (FR-019). This is the only data path exposing event config to participant clients; the full event-config object stays operator-only. No migration.
+- No change needed: `ParticipantStateResponse` (from `GET /api/participant/state`) **already includes** the full `event_config` (with `theme`), so `/participar` applies the theme from state (FR-019). The dedicated operator `GET/PUT /api/event-config` stays operator-only for editing. (See analyze A1 — the earlier concern was dismissed at implementation.)
 
 ### API-token verification hardening (changes 002 behavior)
 
