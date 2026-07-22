@@ -26,19 +26,21 @@
   </header>
 
   <section class="kiosk-top grid min-h-0 flex-1 gap-4 md:grid-cols-3">
+    <aside class="flex min-h-0 flex-col gap-4">
+      <app-qr-panel
+        class="shrink-0"
+        [eventConfig]="(displayState.state$ | async)?.event_config ?? null"
+      />
+      <app-queue-strip
+        class="min-h-0 flex-1"
+        [entries]="(displayState.state$ | async)?.queue ?? []"
+      />
+    </aside>
     <app-youtube-player
       class="min-h-0 md:col-span-2"
       [videoId]="(displayState.state$ | async)?.now_playing?.youtube_video_id ?? null"
       [title]="(displayState.state$ | async)?.now_playing?.title ?? null"
       (ended)="onVideoEnded()"
     />
-    <app-qr-panel
-      class="min-h-0"
-      [eventConfig]="(displayState.state$ | async)?.event_config ?? null"
-    />
-  </section>
-
-  <section class="kiosk-queue-strip mt-4 shrink-0">
-    <app-queue-strip [entries]="(displayState.state$ | async)?.queue ?? []" />
   </section>
 </main>
