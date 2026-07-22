@@ -14,8 +14,3 @@
 .kiosk-top {
   flex: 1 1 auto;
 }
-
-.kiosk-queue-strip {
-  flex: 0 0 auto;
-  min-height: 4.5rem;
-}

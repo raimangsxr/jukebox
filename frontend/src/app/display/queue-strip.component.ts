@@ -16,19 +16,19 @@ import { QueueEntryRead } from '../models/jukebox-state';
         </p>
         <p class="text-[10px] text-jukebox-muted">El número en cada tarjeta es el total de votos</p>
       </div>
-      <div *ngIf="entries.length; else empty" class="flex min-h-0 flex-1 items-center gap-3 overflow-x-auto">
+      <div *ngIf="entries.length; else empty" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         <div
           *ngFor="let entry of entries"
-          class="flex min-w-[10rem] max-w-[14rem] items-center gap-2 rounded-lg bg-jukebox-deep/60 px-2 py-1"
+          class="flex items-center gap-2 rounded-lg bg-jukebox-deep/60 px-2 py-1.5"
         >
           <img
             *ngIf="entry.thumbnail_url"
             [src]="entry.thumbnail_url"
             [alt]="entry.title"
-            class="h-8 w-12 shrink-0 rounded object-cover"
+            class="h-10 w-16 shrink-0 rounded object-cover"
           />
           <div class="min-w-0 flex-1">
-            <p class="truncate text-xs font-medium">{{ entry.title }}</p>
+            <p class="truncate text-sm font-medium">{{ entry.title }}</p>
           </div>
           <span
             class="shrink-0 rounded-full bg-jukebox-accent/25 px-2 py-0.5 text-xs font-bold text-jukebox-accent"
