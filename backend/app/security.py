@@ -27,8 +27,16 @@ def verify_password(plaintext: str, hashed: str) -> bool:
         return False
 
 
+API_TOKEN_PREFIX_LEN = 8
+
+
 def generate_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def token_prefix(plaintext: str) -> str:
+    """Non-secret lookup prefix stored alongside the bcrypt hash (FR-008)."""
+    return plaintext[:API_TOKEN_PREFIX_LEN]
 
 
 def hash_token(plaintext: str) -> str:
@@ -43,8 +51,17 @@ def verify_token(plaintext: str, hashed: str) -> bool:
 
 
 def find_active_token(db: Session, plaintext: str) -> ApiToken | None:
+    # Locate the candidate(s) by indexed non-secret prefix, then verify the
+    # hash — no full-table bcrypt scan (FR-008). Legacy tokens have a NULL
+    # prefix, never match, and are therefore rejected (must be regenerated).
+    prefix = token_prefix(plaintext)
     rows = (
-        db.execute(select(ApiToken).where(ApiToken.revoked_at.is_(None)))
+        db.execute(
+            select(ApiToken).where(
+                ApiToken.revoked_at.is_(None),
+                ApiToken.token_prefix == prefix,
+            )
+        )
         .scalars()
         .all()
     )

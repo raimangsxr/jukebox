@@ -52,6 +52,13 @@ class ApiToken(Base):
         index=True,
     )
     label: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Non-secret indexed lookup prefix (first chars of the plaintext). Lets
+    # token exchange find the candidate row without an O(n) bcrypt scan
+    # (010-hardening-and-polish, FR-008). Nullable for pre-existing rows,
+    # which no longer validate and must be regenerated.
+    token_prefix: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, index=True
+    )
     token_hash: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True, index=True
     )
@@ -96,7 +103,10 @@ class QueueEntry(Base):
     thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     duration_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
     submitted_by_participant_id: Mapped[str | None] = mapped_column(
-        String(36), nullable=True
+        String(36),
+        ForeignKey("participants.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     vote_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     position: Mapped[int | None] = mapped_column(Integer, nullable=True)
