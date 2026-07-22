@@ -247,7 +247,7 @@ As an agent/maintainer following SDD, I want contracts, manifest, agent instruct
 
 ### Functional Requirements — Robustness & operability
 
-- **FR-009**: All outbound HTTP (YouTube `search.list`, `videos.list`, oEmbed, Google OAuth token/userinfo) MUST NOT block the event loop; it MUST use an async client or be offloaded off the event loop.
+- **FR-009**: All outbound HTTP (YouTube `search.list`, `videos.list`, oEmbed, Google OAuth token/userinfo) MUST NOT block the async event loop. **Resolution (implementation finding)**: these calls already run inside **synchronous** FastAPI path operations, which FastAPI executes in its threadpool — so they never touch the event loop. The only `async def` endpoint (`/api/events/stream`) performs no outbound HTTP. FR-009 is therefore satisfied by architecture; the outbound calls stay on `urllib` rather than migrating to `httpx.AsyncClient`, which would force the sync SQLAlchemy `Session` onto the event loop (a regression). The single-replica constraint is documented per FR-014.
 - **FR-010**: The search rate limiter MUST bound its memory by evicting expired/idle participant windows.
 - **FR-011**: The quota-day reset MUST be evaluated deterministically on each usage read/increment so displayed counts reflect the Pacific-day boundary even without intervening traffic.
 - **FR-012**: `queue_entries.submitted_by_participant_id` MUST be backed by a foreign key to `participants.id`; a migration MUST null out pre-existing orphan references before adding the constraint and MUST be reversible.

@@ -22,6 +22,9 @@ metadata:
   labels:
     app.kubernetes.io/name: jukebox-backend
 spec:
+  # MUST stay 1: SSE fan-out, search rate limiting, YouTube key rotation, and
+  # per-key quota counters use in-process state (010-hardening-and-polish, FR-014).
+  # Do not add an HPA or scale up until that state is externalized (e.g. Redis).
   replicas: 1
   selector:
     matchLabels:

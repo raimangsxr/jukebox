@@ -72,6 +72,19 @@ The API-token lookup uses an indexed non-secret prefix (010). **Tokens created b
 3. Restart `jukebox-backend` after updating the secret.
 4. Smoke: `GET /api/youtube/search/config` → `{"enabled":true}`.
 
+## Scaling constraint (single replica)
+
+`jukebox-backend` **must run with `replicas: 1`**. The following runtime state is per-process and not shared across pods:
+
+- SSE subscriber fan-out (`/api/events/stream`)
+- YouTube search rate limiting (per participant)
+- YouTube API key round-robin rotation and in-memory exhaustion
+- Per-key daily quota counters' in-memory broadcast bookkeeping
+
+Running more than one replica would split this state and break realtime updates, rate limiting, and quota accounting. **Do not add an HPA** or raise `replicas` until the shared state is externalized (e.g. Redis) in a future change.
+
+Outbound calls to YouTube/Google run inside synchronous FastAPI path operations, which execute in the framework threadpool — they do not block the async event loop, so a single replica stays responsive under concurrent searches.
+
 ## Deploy order
 
 1. `namespace.yaml`, `configmap.yaml`, `secret.yaml`
