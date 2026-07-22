@@ -58,6 +58,20 @@ class EventConfigSummary(BaseModel):
     queue_visible_count: int
 
 
+class EventConfigRead(EventConfigSummary):
+    model_config = ConfigDict(from_attributes=True)
+
+    updated_at: datetime
+
+
+class EventConfigUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    subtitle: str = Field(default="", max_length=200)
+    app_height_px: int = Field(ge=240, le=4320)
+    theme: str = Field(min_length=1, max_length=8)
+    queue_visible_count: int = Field(ge=1, le=50)
+
+
 class QueueEntryRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
