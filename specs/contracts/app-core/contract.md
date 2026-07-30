@@ -77,9 +77,10 @@ CSS variable `--jukebox-app-height` from `event_config.app_height_px` (default 7
 - Logout button (clears session → `/login`)
 - Tokens panel: list, create (label), revoke, copy-once plaintext
 
-### Moderación (004)
+### Moderación (004, 013)
 
 - Pending review table with approve/reject
+- **Modo de cola** selector above pending table: **Moderado** / **Libre** (Spanish labels); in-app confirmation dialog before `PUT /api/event-config/queue-mode`; when **Libre**, info message that new submissions skip review (legacy pendings may remain)
 - **Iniciar reproducción** when idle + queued; **Saltar canción** when playing
 - YouTube preview opens `https://www.youtube.com/watch?v={id}` in new tab
 - Spanish error messages for queue conflicts
@@ -170,7 +171,12 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **Routing**: unknown routes render a Spanish `NotFoundComponent` (was a silent redirect to `/`).
 - **Dependencies**: unused `@angular/material` and `@angular/cdk` removed.
 - **Dev affordances**: `AuthService.resetForTesting()` is a no-op in production builds.
-- **Tests**: vitest specs for the three guards, the auth interceptor's 401 branching, theme util, and `EventConfigService`.
+- **Tests**: vitest specs for the three guards, the auth interceptor's 401 branching, theme util, and `EventConfigService` (including `updateQueueMode`).
+
+## Queue approval mode (013)
+
+- Admin **Moderación**: mode selector + confirm dialog; Libre informational banner; bound to `GET/PUT /api/event-config/queue-mode` via `EventConfigService.updateQueueMode`
+- `/participar`: no mode indicator; submit response `status` reflects mode (`pending_review` vs `queued`); free submit triggers existing `song.approved` toast via SSE
 
 ## Change history
 
@@ -183,3 +189,4 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **008-youtube-text-search** — YouTube text search UI, dual-path submit, sticky footer
 - **009-admin-api-key-usage** — Admin per-key YouTube API usage table with SSE updates
 - **010-hardening-and-polish** — editable Evento config + theme, responsive kiosk, per-row moderation, QR caching, 404 page, dead-dep removal, guard/interceptor/service tests
+- **013-queue-approval-mode** — queue mode selector in Moderación (Moderado/Libre), confirm before mode change, free-mode direct enqueue UX

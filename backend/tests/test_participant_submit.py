@@ -186,3 +186,19 @@ def test_resubmit_after_reject(dev_participant_client, monkeypatch, db_session):
     )
     response = _submit(dev_participant_client, "jNQXAC9IVRw")
     assert response.status_code == 201
+
+
+def test_submit_status_reflects_queue_mode(
+    dev_participant_client, monkeypatch, db_session
+):
+    from app.models import EVENT_CONFIG_SINGLETON_ID, EventConfig, QueueMode
+
+    _mock_metadata(monkeypatch)
+    config = db_session.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    config.queue_mode = QueueMode.moderated.value
+    db_session.commit()
+    assert _submit(dev_participant_client, "eeeeeeeeeee").json()["status"] == "pending_review"
+
+    config.queue_mode = QueueMode.free.value
+    db_session.commit()
+    assert _submit(dev_participant_client, "fffffffffff").json()["status"] == "queued"

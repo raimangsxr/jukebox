@@ -191,3 +191,28 @@ def test_notification_payload_uses_owner_participant_id(
     assert payload is not None
     assert payload["participant_id"] == participant.id
     assert payload["participant_id"] != other_participant_id
+
+
+def test_song_approved_on_free_submit(dev_participant_client, monkeypatch, db_session):
+    from app.models import EVENT_CONFIG_SINGLETON_ID, EventConfig, QueueMode
+    from .test_participant_submit import _mock_metadata, _submit
+
+    config = db_session.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    config.queue_mode = QueueMode.free.value
+    db_session.commit()
+    _mock_metadata(monkeypatch, title="Free Song")
+    participant_id = dev_participant_client.get("/api/participant/me").json()["participant"]["id"]
+
+    events = collect_sse_events_after(
+        lambda: _submit(dev_participant_client, "hhhhhhhhhhh"),
+        event_type="notification",
+        audience=sse_hub.PARTICIPANT,
+        participant_id=participant_id,
+    )
+
+    assert len(events) == 1
+    _, payload = events[0]
+    assert payload is not None
+    assert payload["type"] == "song.approved"
+    assert payload["participant_id"] == participant_id
+    assert payload["title"] == "Free Song"

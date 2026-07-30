@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from .models import (
     EVENT_CONFIG_DEFAULT_APP_HEIGHT_PX,
     EVENT_CONFIG_DEFAULT_NAME,
+    EVENT_CONFIG_DEFAULT_QUEUE_MODE,
     EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT,
     EVENT_CONFIG_DEFAULT_SUBTITLE,
     EVENT_CONFIG_DEFAULT_THEME,
@@ -58,6 +59,7 @@ def ensure_event_config(db: Session) -> bool:
         app_height_px=EVENT_CONFIG_DEFAULT_APP_HEIGHT_PX,
         theme=EVENT_CONFIG_DEFAULT_THEME,
         queue_visible_count=EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT,
+        queue_mode=EVENT_CONFIG_DEFAULT_QUEUE_MODE,
     )
     db.add(row)
     db.commit()
