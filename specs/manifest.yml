@@ -85,6 +85,17 @@ changes:
       kiosk/admin UX polish, expanded tests, and SDD/repo hygiene. Excludes new
       product features (review section 4).
 
+  - id: 013-queue-approval-mode
+    path: specs/changes/013-queue-approval-mode/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Operator-selectable queue mode (Moderado/Libre) on event_config; free mode
+      enqueues participant submits directly with song.approved notification;
+      admin mode selector in Moderación with confirm dialog.
+
 active:
   change: null
   contract: specs/contracts/backend-api/contract.md

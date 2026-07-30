@@ -12,7 +12,7 @@
 
 ## Active SDD work
 
-No active change. Last completed: **010-hardening-and-polish** (implemented) — consolidated remediation/completion/hygiene across all three contracts.
+No active change. Last completed: **013-queue-approval-mode** (implemented) — queue mode selector (Moderado/Libre), free-mode direct enqueue, admin UI in Moderación.
 
 To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 

@@ -266,14 +266,34 @@ Add indexed non-secret `token_prefix` to `api_tokens`.
 
 Null orphan `queue_entries.submitted_by_participant_id`, then add FK → `participants.id` (`ON DELETE SET NULL`) + index. Reversible.
 
-## Event configuration (010)
+## Event configuration (010, 013)
 
 | Method | Path | Auth | Response |
 |--------|------|------|----------|
 | GET | `/api/event-config` | operator session | 200 `EventConfigRead` |
 | PUT | `/api/event-config` | operator session | 200 `EventConfigRead` |
+| PUT | `/api/event-config/queue-mode` | operator session | 200 `EventConfigRead` |
 
-Operates on the singleton `event_config` row (`name`, `subtitle`, `app_height_px`, `theme`, `queue_visible_count`, `updated_at`); no migration (columns already exist). `PUT` validates: `name` non-empty (≤200), `subtitle` ≤200, `app_height_px` 240–4320, `queue_visible_count` 1–50, `theme` ∈ {`dark`}; invalid → `422`. On success persists, bumps `revision`, and broadcasts `state` over SSE. Participant/anonymous → `401`.
+Operates on the singleton `event_config` row (`name`, `subtitle`, `app_height_px`, `theme`, `queue_visible_count`, `queue_mode`, `updated_at`). Migration `0009` adds `queue_mode` (`moderated` \| `free`, default `moderated`).
+
+`EventConfigRead` includes `queue_mode`. `EventConfigSummary` in `StateResponse` / `ParticipantStateResponse` does **not** include `queue_mode`.
+
+`PUT /api/event-config` body: `{ name, subtitle, app_height_px, theme, queue_visible_count }` — does **not** accept `queue_mode`.
+
+`PUT /api/event-config/queue-mode` body: `{ "queue_mode": "moderated" | "free" }`. On success: persist, `bump_revision`, SSE `state`. Invalid enum → `422`. Unauthenticated → `401`.
+
+`PUT /api/event-config` (Evento form) validates: `name` non-empty (≤200), `subtitle` ≤200, `app_height_px` 240–4320, `queue_visible_count` 1–50, `theme` ∈ {`dark`}; invalid → `422`. On success persists, bumps `revision`, and broadcasts `state` over SSE. Participant/anonymous → `401`.
+
+### Participant submit by queue mode (013)
+
+`POST /api/queue/submit` (participant auth):
+
+| `queue_mode` | Created status | Pending list | Notification |
+|--------------|----------------|--------------|--------------|
+| `moderated` | `pending_review` | yes | `song.approved` on operator approve only |
+| `free` | `queued` | no | `song.approved` immediately on submit |
+
+Duplicate video rule unchanged (`409 video already in queue`). Queue full (`409 queue is full`) applies when enqueueing in free mode. Moderation approve/reject unchanged for legacy `pending_review` rows after mode switch.
 
 ## Auth-token lookup (010)
 
@@ -307,7 +327,7 @@ SSE fan-out, the search rate limiter (with idle-bucket eviction), YouTube key ro
 | `JUKEBOX_YOUTUBE_API_KEYS` | Comma-separated YouTube Data API keys (empty disables search UI) |
 | `JUKEBOX_YOUTUBE_SEARCH_MAX_RESULTS` | Max results per search (default 10) |
 | `JUKEBOX_YOUTUBE_SEARCH_MIN_QUERY_LENGTH` | Min query length after trim (default 2) |
-| `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` | Max `pending_review` submissions per participant (default 2, min 1) |
+| `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` | Max submissions per participant per mode: counts `pending_review` in **moderated**, `queued` in **free** (default 2, min 1) |
 
 ## Error shape
 
@@ -331,6 +351,7 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - `backend/tests/test_notifications.py` — SSE notification emit and targeting
 - `backend/tests/test_youtube_search.py` — search config, auth, rate limits, key pool failover
 - `backend/tests/test_youtube_api_key_usage.py` — per-key usage, SSE `api_key_usage`, auth, persistence
+- `backend/tests/test_queue_approval_mode.py` — queue mode moderated/free, mode switch, caps, duplicates
 
 ## Change history
 
@@ -343,3 +364,4 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - **008-youtube-text-search** — YouTube text search API, multi-key pool, dual-path `/participar` submit UX
 - **009-admin-api-key-usage** — per-key YouTube API daily usage tracking, `GET /api/youtube/api-keys/usage`, SSE `api_key_usage`
 - **010-hardening-and-polish** — server-side SSE audience routing; `GET`/`PUT /api/event-config`; token prefix lookup (Alembic 0007); submitter FK (Alembic 0008); rate-limiter eviction; deterministic quota reset-on-read; unified submit metadata validation; CORS `allow_headers` scoping; single-replica documentation
+- **013-queue-approval-mode** — `event_config.queue_mode` (Alembic 0009); `PUT /api/event-config/queue-mode`; free-mode direct enqueue + `song.approved` on submit; moderated regression unchanged

@@ -15,7 +15,13 @@ EVENT_CONFIG_DEFAULT_SUBTITLE = "Elige la música del evento"
 EVENT_CONFIG_DEFAULT_APP_HEIGHT_PX = 720
 EVENT_CONFIG_DEFAULT_THEME = "dark"
 EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT = 8
+EVENT_CONFIG_DEFAULT_QUEUE_MODE = "moderated"
 MAX_QUEUED_ENTRIES = 100
+
+
+class QueueMode(str, Enum):
+    moderated = "moderated"
+    free = "free"
 
 
 class QueueEntryStatus(str, Enum):
@@ -83,6 +89,9 @@ class EventConfig(Base):
     theme: Mapped[str] = mapped_column(String(8), nullable=False, default="dark")
     queue_visible_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=8
+    )
+    queue_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=EVENT_CONFIG_DEFAULT_QUEUE_MODE
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

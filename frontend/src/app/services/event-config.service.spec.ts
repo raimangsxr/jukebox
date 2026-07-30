@@ -44,4 +44,15 @@ describe('EventConfigService', () => {
     expect(putMock.mock.calls[0][0]).toContain('/event-config');
     expect(putMock.mock.calls[0][1]).toEqual(payload);
   });
+
+  it('PUTs queue mode to the queue-mode endpoint', async () => {
+    const http = {
+      put: vi.fn(() => of({ queue_mode: 'free' }))
+    } as Partial<HttpClient>;
+    const service = makeService(http);
+    await firstValueFrom(service.updateQueueMode('free'));
+    const putMock = http.put as ReturnType<typeof vi.fn>;
+    expect(putMock.mock.calls[0][0]).toContain('/event-config/queue-mode');
+    expect(putMock.mock.calls[0][1]).toEqual({ queue_mode: 'free' });
+  });
 });

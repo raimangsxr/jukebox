@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Literal
 
+QueueModeLiteral = Literal["moderated", "free"]
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -61,7 +63,12 @@ class EventConfigSummary(BaseModel):
 class EventConfigRead(EventConfigSummary):
     model_config = ConfigDict(from_attributes=True)
 
+    queue_mode: QueueModeLiteral
     updated_at: datetime
+
+
+class QueueModeUpdate(BaseModel):
+    queue_mode: QueueModeLiteral
 
 
 class EventConfigUpdate(BaseModel):

@@ -7,10 +7,13 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import (
+    EVENT_CONFIG_SINGLETON_ID,
     MAX_QUEUED_ENTRIES,
+    EventConfig,
     Participant,
     QueueEntry,
     QueueEntryStatus,
+    QueueMode,
 )
 from ..schemas import PendingQueueEntryRead, QueueEntryRead, StateResponse
 from .notification_service import emit_song_approved, emit_song_up_next
@@ -26,6 +29,13 @@ ACTIVE_DUPLICATE_STATUSES = (
     QueueEntryStatus.queued,
     QueueEntryStatus.playing,
 )
+
+
+def get_queue_mode(db: Session) -> QueueMode:
+    config = db.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    if config is None:
+        return QueueMode.moderated
+    return QueueMode(config.queue_mode)
 
 
 def _entry_read(entry: QueueEntry) -> QueueEntryRead:
@@ -172,6 +182,41 @@ def _count_participant_pending(db: Session, participant_id: str) -> int:
     )
 
 
+def _count_participant_queued(db: Session, participant_id: str) -> int:
+    return (
+        db.execute(
+            select(func.count())
+            .select_from(QueueEntry)
+            .where(
+                QueueEntry.submitted_by_participant_id == participant_id,
+                QueueEntry.status == QueueEntryStatus.queued,
+            )
+        ).scalar_one()
+    )
+
+
+def _enqueue_entry(db: Session, entry: QueueEntry) -> QueueEntry:
+    if _count_queued(db) >= MAX_QUEUED_ENTRIES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="queue is full",
+        )
+    if _has_active_duplicate(db, entry.youtube_video_id, exclude_id=entry.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="video already in queue",
+        )
+
+    entry.status = QueueEntryStatus.queued
+    entry.approved_at = datetime.now(timezone.utc)
+    entry.position = _next_position(db)
+    db.commit()
+    db.refresh(entry)
+    _recompute_positions(db)
+    emit_song_approved(entry)
+    return entry
+
+
 def submit_as_participant(
     db: Session,
     participant_id: str,
@@ -185,13 +230,23 @@ def submit_as_participant(
             detail="invalid youtube reference",
         )
 
-    pending_count = _count_participant_pending(db, participant_id)
-    max_pending = get_settings().max_pending_submissions_per_participant
-    if pending_count >= max_pending:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="pending submission limit reached",
-        )
+    mode = get_queue_mode(db)
+    max_submissions = get_settings().max_pending_submissions_per_participant
+
+    if mode == QueueMode.moderated:
+        pending_count = _count_participant_pending(db, participant_id)
+        if pending_count >= max_submissions:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="pending submission limit reached",
+            )
+    else:
+        queued_count = _count_participant_queued(db, participant_id)
+        if queued_count >= max_submissions:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="pending submission limit reached",
+            )
 
     if _has_active_duplicate(db, video_id):
         raise HTTPException(
@@ -225,18 +280,34 @@ def submit_as_participant(
     )
     db.add(entry)
     db.flush()
-    if _count_participant_pending(db, participant_id) > max_pending:
+
+    if mode == QueueMode.moderated:
+        if _count_participant_pending(db, participant_id) > max_submissions:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="pending submission limit reached",
+            )
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        db.refresh(entry)
+        bump_revision(db)
+        return entry
+
+    if _count_participant_queued(db, participant_id) >= max_submissions:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="pending submission limit reached",
         )
     try:
-        db.commit()
+        _enqueue_entry(db, entry)
     except Exception:
         db.rollback()
         raise
-    db.refresh(entry)
     bump_revision(db)
     return entry
 
@@ -260,25 +331,8 @@ def approve_entry(db: Session, entry_id: str) -> QueueEntry:
             status_code=status.HTTP_409_CONFLICT,
             detail="invalid status transition",
         )
-    if _count_queued(db) >= MAX_QUEUED_ENTRIES:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="queue is full",
-        )
-    if _has_active_duplicate(db, entry.youtube_video_id, exclude_id=entry.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="video already in queue",
-        )
-
-    entry.status = QueueEntryStatus.queued
-    entry.approved_at = datetime.now(timezone.utc)
-    entry.position = _next_position(db)
-    db.commit()
-    db.refresh(entry)
-    _recompute_positions(db)
+    entry = _enqueue_entry(db, entry)
     bump_revision(db)
-    emit_song_approved(entry)
     return entry
 
 

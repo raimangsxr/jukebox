@@ -15,7 +15,7 @@ import { Subscription } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
-import { EventConfigRead } from '../models/event-config';
+import { EventConfigRead, QueueMode } from '../models/event-config';
 import { AuthService } from '../services/auth.service';
 import { PendingQueueEntryRead } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
@@ -82,6 +82,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   configSaved = false;
   apiKeyUsage: ApiKeyUsageListResponse | null = null;
   apiKeyUsageError: string | null = null;
+  queueMode: QueueMode = 'moderated';
+  queueModeSaving = false;
+  pendingQueueModeChange: QueueMode | null = null;
   private stateSubscription: Subscription | null = null;
   private apiKeyUsageSubscription: Subscription | null = null;
 
@@ -252,6 +255,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.eventConfigService.getConfig().subscribe({
       next: config => {
         this.eventConfig = { ...config };
+        this.queueMode = config.queue_mode;
         this.configLoading = false;
         this.cdr.markForCheck();
       },
@@ -260,7 +264,73 @@ export class AdminComponent implements OnInit, OnDestroy {
         this.configError = 'No se pudo cargar la configuración del evento.';
         this.cdr.markForCheck();
       }
+      });
+  }
+
+  onQueueModeChange(next: QueueMode): void {
+    if (next === this.queueMode || this.queueModeSaving) {
+      return;
+    }
+    this.pendingQueueModeChange = next;
+    this.cdr.markForCheck();
+  }
+
+  get queueModeConfirmMessage(): string {
+    if (this.pendingQueueModeChange === 'free') {
+      return 'Los nuevos envíos entrarán directamente en la cola sin pasar por revisión.';
+    }
+    if (this.pendingQueueModeChange === 'moderated') {
+      return 'Los nuevos envíos requerirán tu aprobación antes de entrar en la cola.';
+    }
+    return '';
+  }
+
+  get queueModeConfirmTitle(): string {
+    if (this.pendingQueueModeChange === 'free') {
+      return '¿Cambiar a modo Libre?';
+    }
+    if (this.pendingQueueModeChange === 'moderated') {
+      return '¿Cambiar a modo Moderado?';
+    }
+    return 'Confirmar cambio de modo';
+  }
+
+  cancelQueueModeChange(): void {
+    this.pendingQueueModeChange = null;
+    this.cdr.markForCheck();
+  }
+
+  confirmQueueModeChange(): void {
+    const next = this.pendingQueueModeChange;
+    if (next === null || next === this.queueMode || this.queueModeSaving) {
+      this.pendingQueueModeChange = null;
+      this.cdr.markForCheck();
+      return;
+    }
+    const previous = this.queueMode;
+    this.pendingQueueModeChange = null;
+    this.queueModeSaving = true;
+    this.moderationError = null;
+    this.eventConfigService.updateQueueMode(next).subscribe({
+      next: config => {
+        this.queueMode = config.queue_mode;
+        if (this.eventConfig) {
+          this.eventConfig = { ...this.eventConfig, queue_mode: config.queue_mode };
+        }
+        this.queueModeSaving = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.queueMode = previous;
+        this.queueModeSaving = false;
+        this.moderationError = 'No se pudo cambiar el modo de cola.';
+        this.cdr.markForCheck();
+      }
     });
+  }
+
+  queueModeLabel(mode: QueueMode): string {
+    return mode === 'free' ? 'Libre' : 'Moderado';
   }
 
   saveEventConfig(): void {

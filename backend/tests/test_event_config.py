@@ -25,6 +25,7 @@ def test_get_returns_current_config(authed_client):
     body = response.json()
     assert body["name"] == EVENT_CONFIG_DEFAULT_NAME
     assert body["theme"] == "dark"
+    assert body["queue_mode"] == "moderated"
     assert "updated_at" in body
 
 
@@ -74,3 +75,38 @@ def test_put_rejects_participant(dev_participant_client):
 
 def test_get_rejects_anonymous(client):
     assert client.get("/api/event-config").status_code == 401
+
+
+def test_put_queue_mode_persists(authed_client, db_session):
+    response = authed_client.put(
+        "/api/event-config/queue-mode",
+        json={"queue_mode": "free"},
+    )
+    assert response.status_code == 200
+    assert response.json()["queue_mode"] == "free"
+
+    config = db_session.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    assert config.queue_mode == "free"
+
+
+def test_put_queue_mode_bumps_revision(authed_client):
+    before = authed_client.get("/api/state").json()["revision"]
+    authed_client.put("/api/event-config/queue-mode", json={"queue_mode": "free"})
+    after = authed_client.get("/api/state").json()["revision"]
+    assert after > before
+
+
+def test_put_queue_mode_rejects_invalid(authed_client):
+    response = authed_client.put(
+        "/api/event-config/queue-mode",
+        json={"queue_mode": "invalid"},
+    )
+    assert response.status_code == 422
+
+
+def test_put_queue_mode_rejects_anonymous(client):
+    response = client.put(
+        "/api/event-config/queue-mode",
+        json={"queue_mode": "free"},
+    )
+    assert response.status_code == 401

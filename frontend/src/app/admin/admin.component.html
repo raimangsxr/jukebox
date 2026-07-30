@@ -37,6 +37,43 @@
       </div>
     </div>
 
+    <div class="mb-4 space-y-3 rounded-lg border border-white/10 bg-jukebox-deep/40 p-3">
+      <p class="text-sm font-medium">Modo de cola</p>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+          [class.bg-jukebox-accent]="queueMode === 'moderated'"
+          [class.text-white]="queueMode === 'moderated'"
+          [class.border]="queueMode !== 'moderated'"
+          [class.border-white/20]="queueMode !== 'moderated'"
+          [disabled]="queueModeSaving"
+          (click)="onQueueModeChange('moderated')"
+        >
+          Moderado
+        </button>
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+          [class.bg-jukebox-accent]="queueMode === 'free'"
+          [class.text-white]="queueMode === 'free'"
+          [class.border]="queueMode !== 'free'"
+          [class.border-white/20]="queueMode !== 'free'"
+          [disabled]="queueModeSaving"
+          (click)="onQueueModeChange('free')"
+        >
+          Libre
+        </button>
+      </div>
+      <p class="text-xs text-jukebox-muted">
+        Modo activo: <span class="font-semibold text-white">{{ queueModeLabel(queueMode) }}</span>
+      </p>
+      <p *ngIf="queueMode === 'free'" class="text-sm text-jukebox-muted">
+        Los nuevos envíos entran directamente en la cola sin pasar por revisión. Las canciones
+        pendientes anteriores siguen visibles abajo hasta que las apruebes o rechaces.
+      </p>
+    </div>
+
     <p *ngIf="moderationError" class="mb-4 text-sm text-red-400">{{ moderationError }}</p>
 
     <div class="overflow-x-auto">
@@ -333,3 +370,40 @@
     </div>
   </section>
 </main>
+
+<div
+  *ngIf="pendingQueueModeChange"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelQueueModeChange()"
+>
+  <div
+    class="w-full max-w-md rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-labelledby]="'queue-mode-dialog-title'"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 id="queue-mode-dialog-title" class="text-lg font-semibold text-white">
+      {{ queueModeConfirmTitle }}
+    </h3>
+    <p class="mt-2 text-sm text-jukebox-muted">{{ queueModeConfirmMessage }}</p>
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelQueueModeChange()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="queueModeSaving"
+        (click)="confirmQueueModeChange()"
+      >
+        {{ queueModeSaving ? 'Guardando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</div>

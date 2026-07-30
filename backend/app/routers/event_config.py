@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import EVENT_CONFIG_SINGLETON_ID, EventConfig
-from ..schemas import EventConfigRead, EventConfigUpdate
+from ..models import EVENT_CONFIG_SINGLETON_ID, EventConfig, QueueMode
+from ..schemas import EventConfigRead, EventConfigUpdate, QueueModeUpdate
 from ..security import CurrentUser
 from ..services.state_service import bump_revision
 
@@ -53,5 +53,24 @@ def update_event_config(
     db.commit()
     db.refresh(config)
     # Propagate to kiosk/admin via the SSE `state` snapshot without a reload.
+    bump_revision(db)
+    return EventConfigRead.model_validate(config)
+
+
+@router.put("/queue-mode", response_model=EventConfigRead)
+def update_queue_mode(
+    payload: QueueModeUpdate,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> EventConfigRead:
+    if payload.queue_mode not in {QueueMode.moderated.value, QueueMode.free.value}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="unsupported queue mode",
+        )
+    config = _get_config(db)
+    config.queue_mode = payload.queue_mode
+    db.commit()
+    db.refresh(config)
     bump_revision(db)
     return EventConfigRead.model_validate(config)
