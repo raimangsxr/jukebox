@@ -1,6 +1,6 @@
 # app-core Contract
 
-Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search**, **009-admin-api-key-usage**, **010-hardening-and-polish** (2026-07-22).
+Status: active. Consolidated from changes **001-foundation-jukebox**, **002-operator-auth-embed-tokens**, **004-kiosk-display-queue**, **005-participant-voting**, **006-participant-oauth-submit**, **007-participant-notifications**, **008-youtube-text-search**, **009-admin-api-key-usage**, **010-hardening-and-polish**, **014-youtube-player-autostart** (2026-07-30).
 
 ## Purpose
 
@@ -67,8 +67,19 @@ CSS variable `--jukebox-app-height` from `event_config.app_height_px` (default 7
 
 ## Display services (004)
 
-- `DisplayStateService` — `GET /api/state`, SSE `/api/events/stream`, `state$`, `apiKeyUsage$`, `advancePlayback()`
+- `DisplayStateService` — `GET /api/state`, SSE `/api/events/stream`, `state$`, `apiKeyUsage$`, `playbackStatus$`, `advancePlayback()`, `reportPlaybackStatus()`
 - Child components: `YoutubePlayerComponent`, `QrPanelComponent`, `QueueStripComponent`
+
+### YoutubePlayerComponent (014, 015)
+
+- Loads YouTube IFrame API; creates player when `videoId` is set.
+- On load, probes browser autoplay-with-sound capability (`detectAutoplayWithSound`); caches result in `sessionStorage` key `jukebox.autoplayCapable`.
+- When autoplay with sound is allowed (kiosk Chromium flags / PWA), `playerVars` use `mute: 0` and no overlay.
+- Otherwise `mute: 1` with overlay **Activar sonido**; tap calls `unMute()` + `playVideo()` inside user gesture; `sessionStorage` key `jukebox.playerActivated` persists manual unlock.
+- `playerVars`: `autoplay: 1`, `playsinline: 1`, `rel: 0`, `modestbranding: 1`; `mute` per capability above.
+- On sound activation, if queue non-empty and idle, calls `advancePlayback()` to promote top queued entry.
+- Retries `playVideo()` when player remains `CUED` or `PAUSED` after load.
+- Reports kiosk audio health to backend via `POST /api/display/playback-status` (`idle` | `sound` | `muted`).
 
 ## Admin UI
 
@@ -82,6 +93,8 @@ CSS variable `--jukebox-app-height` from `event_config.app_height_px` (default 7
 - Pending review table with approve/reject
 - **Modo de cola** selector above pending table: **Moderado** / **Libre** (Spanish labels); in-app confirmation dialog before `PUT /api/event-config/queue-mode`; when **Libre**, info message that new submissions skip review (legacy pendings may remain)
 - **Iniciar reproducción** when idle + queued; **Saltar canción** when playing
+- Playback status line: **Sonando con audio: {title}** / **Sonando sin audio: {title}** when `now_playing` (from SSE `playback_status`); **Cola lista — {n} canciones en espera** when idle + queued; idle empty message otherwise
+- When `playback_status.audio_mode` is `muted` while playing, show amber hint to check kiosk Chromium autoplay policy or parent iframe `allow="autoplay"`
 - YouTube preview opens `https://www.youtube.com/watch?v={id}` in new tab
 - Spanish error messages for queue conflicts
 

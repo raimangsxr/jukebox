@@ -21,6 +21,7 @@ PROTECTED_PATHS_002 = {
 PROTECTED_PATHS_004 = {
     "/api/state": {"get"},
     "/api/events/stream": {"get"},
+    "/api/display/playback-status": {"get", "post"},
     "/api/queue/pending": {"get"},
     "/api/queue/{entry_id}/approve": {"post"},
     "/api/queue/{entry_id}/reject": {"post"},

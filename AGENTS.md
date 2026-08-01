@@ -12,7 +12,7 @@
 
 ## Active SDD work
 
-No active change. Last completed: **013-queue-approval-mode** (implemented) — queue mode selector (Moderado/Libre), free-mode direct enqueue, admin UI in Moderación.
+No active change. Last completed: **015-kiosk-playback-audio** (implemented) — autoplay-with-sound detection, playback_status SSE, admin audio hint.
 
 To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 

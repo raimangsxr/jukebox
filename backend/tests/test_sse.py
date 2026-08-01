@@ -24,8 +24,8 @@ def test_sse_revision_on_approve(authed_client, pending_entry):
     assert approve.status_code == 200
     after = authed_client.get("/api/state").json()
     assert after["revision"] > before
-    assert len(after["queue"]) == 1
-    assert after["queue"][0]["status"] == "queued"
+    assert after["now_playing"]["id"] == pending_entry.id
+    assert len(after["queue"]) == 0
 
 
 def test_sse_vote_count_broadcast(authed_client, queued_entry, db_session):
@@ -67,7 +67,7 @@ def test_sse_stream_includes_notification_without_blocking_state(
     assert "notification" in event_types
     state_events = [payload for et, payload in events if et == "state"]
     assert state_events
-    assert state_events[-1]["queue"]
+    assert state_events[-1]["now_playing"]
 
 
 def test_state_broadcast_reaches_all_audiences(db_session):

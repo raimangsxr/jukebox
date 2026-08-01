@@ -25,8 +25,9 @@ def test_song_approved_on_approve(authed_client, db_session, participant):
         participant_id=participant.id,
     )
 
-    assert len(events) == 1
-    _, payload = events[0]
+    approved = [p for _, p in events if p and p.get("type") == "song.approved"]
+    assert len(approved) == 1
+    payload = approved[0]
     assert payload is not None
     assert payload["type"] == "song.approved"
     assert payload["queue_entry_id"] == pending.id
@@ -186,8 +187,9 @@ def test_notification_payload_uses_owner_participant_id(
         participant_id=participant.id,
     )
 
-    assert len(events) == 1
-    _, payload = events[0]
+    approved = [p for _, p in events if p and p.get("type") == "song.approved"]
+    assert len(approved) == 1
+    payload = approved[0]
     assert payload is not None
     assert payload["participant_id"] == participant.id
     assert payload["participant_id"] != other_participant_id
@@ -210,8 +212,9 @@ def test_song_approved_on_free_submit(dev_participant_client, monkeypatch, db_se
         participant_id=participant_id,
     )
 
-    assert len(events) == 1
-    _, payload = events[0]
+    approved = [p for _, p in events if p and p.get("type") == "song.approved"]
+    assert len(approved) == 1
+    payload = approved[0]
     assert payload is not None
     assert payload["type"] == "song.approved"
     assert payload["participant_id"] == participant_id

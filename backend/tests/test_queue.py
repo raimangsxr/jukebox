@@ -47,7 +47,19 @@ def test_pending_list_includes_submitter_and_duration(
 def test_approve_pending(authed_client, pending_entry):
     response = authed_client.post(f"/api/queue/{pending_entry.id}/approve")
     assert response.status_code == 200
+    assert response.json()["status"] == "playing"
+
+    state = authed_client.get("/api/state").json()
+    assert state["now_playing"]["id"] == pending_entry.id
+
+
+def test_approve_while_playing_only_queues(authed_client, pending_entry, playing_entry):
+    response = authed_client.post(f"/api/queue/{pending_entry.id}/approve")
+    assert response.status_code == 200
     assert response.json()["status"] == "queued"
+
+    state = authed_client.get("/api/state").json()
+    assert state["now_playing"]["id"] == playing_entry.id
 
 
 def test_reject_pending(authed_client, pending_entry):

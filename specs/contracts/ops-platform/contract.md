@@ -1,6 +1,6 @@
 # ops-platform Contract
 
-Status: active. Consolidated from changes **001-foundation-jukebox**, **003-kubernetes-manifests**, and **010-hardening-and-polish** (2026-07-22).
+Status: active. Consolidated from changes **001-foundation-jukebox**, **003-kubernetes-manifests**, and **010-hardening-and-polish**, **014-youtube-player-autostart**, **015-kiosk-playback-audio** (2026-08-01).
 
 ## Purpose
 
@@ -68,7 +68,7 @@ Seven core manifests + README in `deploy/k8s/`:
 | `frontend.yaml` | Service + Deployment, probes `/health` |
 | `migration-job.yaml` | Alembic `upgrade head` |
 | `ingress.yaml` | `jukebox.rromani.eu`, `/api` + `/` |
-| `README.md` | Env table, deploy order, mirror instructions |
+| `README.md` | Env table, deploy order, kiosk autoplay (014), mirror instructions |
 | `argocd-application.yaml.example` | ArgoCD Application for `argocd-apps` repo |
 
 ### Image tags
@@ -115,6 +115,15 @@ Register the redirect URI in Google Cloud Console for the OAuth client.
 3. Backend + Frontend Deployments
 4. Ingress
 5. Smoke: `/api/health`, login, kiosk CORS/CSP
+
+### Kiosk display autoplay (014, 015)
+
+`deploy/k8s/README.md` documents:
+
+- Player probes autoplay-with-sound; unmuted playback when browser policy allows (015).
+- Chromium kiosk: `--autoplay-policy=no-user-gesture-required` for sound without a tap on dedicated display hardware.
+- Parent iframe embed (kiosk-screen / bull): `allow="autoplay"` on the iframe element.
+- Admin shows live `playback_status` via SSE (`sound` / `muted` / `idle`).
 
 ### GitOps mirror
 

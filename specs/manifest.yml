@@ -96,6 +96,28 @@ changes:
       enqueues participant submits directly with song.approved notification;
       admin mode selector in Moderación with confirm dialog.
 
+  - id: 014-youtube-player-autostart
+    path: specs/changes/014-youtube-player-autostart/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+      - ops-platform
+    description: >-
+      Auto-start now_playing on enqueue when idle; muted YouTube bootstrap;
+      sound activation overlay; admin playback status; kiosk autoplay ops docs.
+
+  - id: 015-kiosk-playback-audio
+    path: specs/changes/015-kiosk-playback-audio/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+      - ops-platform
+    description: >-
+      Autoplay-with-sound detection on kiosk; unmuted player when capable;
+      playback_status SSE + admin audio health hint.
+
 active:
   change: null
   contract: specs/contracts/backend-api/contract.md

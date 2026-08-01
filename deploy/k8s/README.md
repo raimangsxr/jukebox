@@ -72,6 +72,23 @@ The API-token lookup uses an indexed non-secret prefix (010). **Tokens created b
 3. Restart `jukebox-backend` after updating the secret.
 4. Smoke: `GET /api/youtube/search/config` → `{"enabled":true}`.
 
+## Kiosk display autoplay (014, 015)
+
+The YouTube player probes autoplay-with-sound on load. When the browser allows it (Chromium kiosk flags, installed PWA), playback starts **with audio** and no overlay. Otherwise it falls back to muted autoplay with a one-time **Activar sonido** overlay.
+
+For unattended displays (no physical access):
+
+1. **Chromium kiosk mode** on dedicated hardware: launch with `--autoplay-policy=no-user-gesture-required` so audio can start without a tap.
+2. **Iframe embed** (kiosk-screen / bull): the parent iframe must include `allow="autoplay"` so autoplay is not blocked inside the embedded jukebox SPA.
+
+The kiosk reports `audio_mode` (`sound` / `muted` / `idle`) to the backend; operators see live status in `/admin` via SSE `playback_status`.
+
+Example Chromium flags for a dedicated display PC or Raspberry Pi:
+
+```bash
+chromium --kiosk --autoplay-policy=no-user-gesture-required 'https://jukebox.example/?token=...'
+```
+
 ## Scaling constraint (single replica)
 
 `jukebox-backend` **must run with `replicas: 1`**. The following runtime state is per-process and not shared across pods:

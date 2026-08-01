@@ -105,6 +105,18 @@ class StateResponse(BaseModel):
     event_config: EventConfigSummary
 
 
+PlaybackAudioMode = Literal["idle", "sound", "muted"]
+
+
+class PlaybackStatusRead(BaseModel):
+    audio_mode: PlaybackAudioMode
+    updated_at: datetime
+
+
+class PlaybackStatusUpdate(BaseModel):
+    audio_mode: PlaybackAudioMode
+
+
 class PendingListResponse(BaseModel):
     entries: list[PendingQueueEntryRead]
 

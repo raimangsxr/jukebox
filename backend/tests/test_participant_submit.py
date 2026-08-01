@@ -201,4 +201,4 @@ def test_submit_status_reflects_queue_mode(
 
     config.queue_mode = QueueMode.free.value
     db_session.commit()
-    assert _submit(dev_participant_client, "fffffffffff").json()["status"] == "queued"
+    assert _submit(dev_participant_client, "fffffffffff").json()["status"] == "playing"

@@ -63,14 +63,15 @@ def test_free_submit_goes_directly_to_queue(
         dev_participant_client, f"https://www.youtube.com/watch?v={sample_video_id}"
     )
     assert response.status_code == 201
-    assert response.json()["status"] == "queued"
+    assert response.json()["status"] == "playing"
 
     pending = authed_client.get("/api/queue/pending").json()["entries"]
     assert not any(entry["id"] == response.json()["id"] for entry in pending)
 
     state = dev_participant_client.get("/api/state").json()
+    assert state["now_playing"]["id"] == response.json()["id"]
     queue_ids = [item["id"] for item in state["queue"]]
-    assert response.json()["id"] in queue_ids
+    assert response.json()["id"] not in queue_ids
 
 
 def test_free_queued_cap(dev_participant_client, monkeypatch, db_session):
@@ -78,7 +79,8 @@ def test_free_queued_cap(dev_participant_client, monkeypatch, db_session):
     _mock_metadata(monkeypatch)
     assert _submit(dev_participant_client, "aaaaaaaaaaa").status_code == 201
     assert _submit(dev_participant_client, "bbbbbbbbbbb").status_code == 201
-    response = _submit(dev_participant_client, "ccccccccccc")
+    assert _submit(dev_participant_client, "ccccccccccc").status_code == 201
+    response = _submit(dev_participant_client, "ddddddddddd")
     assert response.status_code == 429
     assert response.json()["detail"] == "pending submission limit reached"
 
@@ -120,13 +122,15 @@ def test_mode_switch_preserves_queue_positions(
     first = _submit(dev_participant_client, "aaaaaaaaaaa").json()["id"]
     second = _submit(dev_participant_client, "bbbbbbbbbbb").json()["id"]
 
-    before = dev_participant_client.get("/api/state").json()["queue"]
-    assert [item["id"] for item in before] == [first, second]
+    before = dev_participant_client.get("/api/state").json()
+    assert before["now_playing"]["id"] == first
+    assert [item["id"] for item in before["queue"]] == [second]
 
     _set_queue_mode(db_session, QueueMode.moderated)
     authed_client.put("/api/event-config/queue-mode", json={"queue_mode": "free"})
-    after = dev_participant_client.get("/api/state").json()["queue"]
-    assert [item["id"] for item in after] == [first, second]
+    after = dev_participant_client.get("/api/state").json()
+    assert after["now_playing"]["id"] == first
+    assert [item["id"] for item in after["queue"]] == [second]
 
 
 def test_moderated_resumes_after_switch_back(
@@ -134,7 +138,7 @@ def test_moderated_resumes_after_switch_back(
 ):
     _set_queue_mode(db_session, QueueMode.free)
     _mock_metadata(monkeypatch)
-    assert _submit(dev_participant_client, "aaaaaaaaaaa").json()["status"] == "queued"
+    assert _submit(dev_participant_client, "aaaaaaaaaaa").json()["status"] == "playing"
 
     authed_client.put("/api/event-config/queue-mode", json={"queue_mode": "moderated"})
     response = _submit(dev_participant_client, "bbbbbbbbbbb")
@@ -149,4 +153,4 @@ def test_free_submit_after_operator_mode_put(
     authed_client.put("/api/event-config/queue-mode", json={"queue_mode": "free"})
     response = _submit(dev_participant_client, "ccccccccccc")
     assert response.status_code == 201
-    assert response.json()["status"] == "queued"
+    assert response.json()["status"] == "playing"
