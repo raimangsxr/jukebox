@@ -39,7 +39,7 @@ FastAPI + Alembic + PostgreSQL service for amrn-jukebox. Owns persistent event c
 
 SSE `event: state` payload matches `StateResponse`. Heartbeat comment every 30s. Response header `X-Accel-Buffering: no`.
 
-**Also on the same stream** (`event: notification`, payload `NotificationEventRead`; `event: api_key_usage`, payload `ApiKeyUsageListResponse`):
+**Also on the same stream** (`event: notification`, payload `NotificationEventRead`; `event: api_key_usage`, payload `ApiKeyUsageListResponse`; `event: playback_status`, payload `PlaybackStatusRead`):
 
 | `type` | When |
 |--------|------|
@@ -59,6 +59,7 @@ SSE `event: state` payload matches `StateResponse`. Heartbeat comment every 30s.
 
 - `event: state` → all authorized subscribers.
 - `event: api_key_usage` → **operator** subscribers only (never participants).
+- `event: playback_status` → **operator** subscribers only (never participants).
 - `event: notification` → **only** the target `participant_id`'s subscriber(s).
 
 Ambiguous subscribers default to participant scope (least privilege). This replaces the earlier broadcast-to-all + client-side filtering.
@@ -156,6 +157,17 @@ Accounting: increment `used_count` by 1 before each outbound YouTube Data API re
 
 SSE `event: api_key_usage` on `/api/events/stream` with `ApiKeyUsageListResponse` payload after usage changes or quota-day roll. Kiosk/participant clients ignore unknown events.
 
+### Display playback status (015)
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| GET | `/api/display/playback-status` | operator session (incl. embed token exchange) | 200 `PlaybackStatusRead` |
+| POST | `/api/display/playback-status` | operator session (kiosk display) | 200 `PlaybackStatusRead` |
+
+`PlaybackStatusRead`: `{ "audio_mode": "idle" | "sound" | "muted", "updated_at": ISO-8601 }`.
+
+Kiosk display reports `audio_mode` from the YouTube player; server stores in-memory (single replica) and broadcasts SSE `event: playback_status` to **operator** subscribers only.
+
 ### Participant submit errors (006)
 
 API returns stable English `detail` strings; frontend maps to Spanish.
@@ -172,6 +184,8 @@ Participants may submit while they already have songs in `queued` or `playing`; 
 `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` (default `2`, min `1`) controls the per-participant `pending_review` cap. `GET /api/participant/state` exposes `max_pending_submissions` for client UX.
 
 `POST /api/queue/skip`: advance when `playing`; start when idle + `queued`; 409 `nothing to advance` when empty.
+
+**Auto-start on enqueue** (014): when an entry is enqueued via approve or free-mode submit, if nothing is `playing` and the queue is non-empty, the top `queued` entry is promoted to `playing` automatically (same semantics as idle `POST /api/queue/skip`). If something is already `playing`, enqueue only adds to the queue.
 
 `POST /api/queue/dev-submit` only when `JUKEBOX_ALLOW_DEV_QUEUE_SUBMIT=true`.
 

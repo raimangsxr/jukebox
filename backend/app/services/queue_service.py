@@ -214,7 +214,23 @@ def _enqueue_entry(db: Session, entry: QueueEntry) -> QueueEntry:
     db.refresh(entry)
     _recompute_positions(db)
     emit_song_approved(entry)
+    _maybe_auto_start_playback(db)
     return entry
+
+
+def _maybe_auto_start_playback(db: Session) -> None:
+    if get_now_playing(db) is not None:
+        return
+    next_entry = _top_queued(db)
+    if next_entry is None:
+        return
+    runtime = get_or_create_runtime(db)
+    emit_song_up_next(next_entry)
+    next_entry.status = QueueEntryStatus.playing
+    next_entry.position = None
+    runtime.now_playing_entry_id = next_entry.id
+    db.commit()
+    _recompute_positions(db)
 
 
 def submit_as_participant(

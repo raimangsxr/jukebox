@@ -21,6 +21,7 @@ import { PendingQueueEntryRead } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
 import { EventConfigService } from '../services/event-config.service';
 import { QueueAdminService } from '../services/queue-admin.service';
+import { PlaybackAudioMode } from '../models/playback-status';
 
 interface ApiTokenRead {
   id: string;
@@ -85,8 +86,10 @@ export class AdminComponent implements OnInit, OnDestroy {
   queueMode: QueueMode = 'moderated';
   queueModeSaving = false;
   pendingQueueModeChange: QueueMode | null = null;
+  playbackAudioMode: PlaybackAudioMode = 'idle';
   private stateSubscription: Subscription | null = null;
   private apiKeyUsageSubscription: Subscription | null = null;
+  private playbackStatusSubscription: Subscription | null = null;
 
   ngOnInit(): void {
     this.refreshTokens();
@@ -103,11 +106,16 @@ export class AdminComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       }
     });
+    this.playbackStatusSubscription = this.displayState.playbackStatus$.subscribe(status => {
+      this.playbackAudioMode = status?.audio_mode ?? 'idle';
+      this.cdr.markForCheck();
+    });
   }
 
   ngOnDestroy(): void {
     this.stateSubscription?.unsubscribe();
     this.apiKeyUsageSubscription?.unsubscribe();
+    this.playbackStatusSubscription?.unsubscribe();
     this.displayState.stop();
   }
 
@@ -122,6 +130,34 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   get playbackDisabled(): boolean {
     return !this.canStartPlayback && !this.canSkipPlayback;
+  }
+
+  get playbackStatusLabel(): string {
+    const state = this.displayState.snapshot;
+    if (!state) {
+      return '';
+    }
+    if (state.now_playing) {
+      if (this.playbackAudioMode === 'sound') {
+        return `Sonando con audio: ${state.now_playing.title}`;
+      }
+      if (this.playbackAudioMode === 'muted') {
+        return `Sonando sin audio: ${state.now_playing.title}`;
+      }
+      return `Sonando: ${state.now_playing.title}`;
+    }
+    if (state.queue.length > 0) {
+      return `Cola lista — ${state.queue.length} canciones en espera`;
+    }
+    return 'Sin canciones en cola';
+  }
+
+  get playbackAudioHint(): string | null {
+    const state = this.displayState.snapshot;
+    if (!state?.now_playing || this.playbackAudioMode !== 'muted') {
+      return null;
+    }
+    return 'La pantalla reproduce sin audio. Revisa Chromium kiosk (--autoplay-policy) o el iframe allow="autoplay".';
   }
 
   refreshTokens(): void {

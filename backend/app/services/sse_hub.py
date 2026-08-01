@@ -99,3 +99,19 @@ def broadcast_api_key_usage(usage: Any) -> None:
     for sub in list(_subscribers):
         if sub.audience == OPERATOR:
             _put(sub, message)
+
+
+def format_playback_status_event(status: Any) -> str:
+    if hasattr(status, "model_dump"):
+        payload = status.model_dump(mode="json")
+    else:
+        payload = status
+    return f"event: playback_status\ndata: {json.dumps(payload)}\n\n"
+
+
+def broadcast_playback_status(status: Any) -> None:
+    """Kiosk playback audio health is operator-only."""
+    message = format_playback_status_event(status)
+    for sub in list(_subscribers):
+        if sub.audience == OPERATOR:
+            _put(sub, message)

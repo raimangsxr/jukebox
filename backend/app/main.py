@@ -12,6 +12,7 @@ from .middleware import FrameAncestorsMiddleware
 from .routers import (
     auth,
     auth_google,
+    display,
     event_config,
     health,
     participant,
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_google.router)
     app.include_router(tokens.router)
     app.include_router(state.router)
+    app.include_router(display.router)
     app.include_router(event_config.router)
     app.include_router(queue.router)
     app.include_router(participant.router)
