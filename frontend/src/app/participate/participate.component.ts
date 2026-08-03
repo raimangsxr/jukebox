@@ -7,6 +7,7 @@ import {
   inject
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { Subscription, firstValueFrom } from 'rxjs';
 
 import { ParticipantStateResponse, QueueEntryRead } from '../models/jukebox-state';
@@ -14,6 +15,8 @@ import { ParticipantRead } from '../models/participant-state';
 import { SearchResultItem } from '../models/youtube-search';
 import { ParticipantStateService } from '../services/participant-state.service';
 import { ParticipantService } from '../services/participant.service';
+import { LiveStatusComponent } from '../components/live-status.component';
+import { LiveConnectionStatus } from '../services/live-connection';
 import { environment } from '../../environments/environment';
 
 import { NotificationToastComponent } from './notification-toast.component';
@@ -34,10 +37,12 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'Rechazada'
 };
 
+const RULES_ACCEPTED_KEY = 'jukebox.participantRulesAccepted';
+
 @Component({
   selector: 'app-participate',
   standalone: true,
-  imports: [FormsModule, NotificationToastComponent],
+  imports: [FormsModule, NotificationToastComponent, LiveStatusComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './participate.component.html',
   styleUrl: './participate.component.css'
@@ -45,10 +50,18 @@ const STATUS_LABELS: Record<string, string> = {
 export class ParticipateComponent implements OnInit, OnDestroy {
   private readonly participantService = inject(ParticipantService);
   private readonly stateService = inject(ParticipantStateService);
+  private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly baseUrl = environment.apiBaseUrl;
 
   authenticated = false;
   loading = true;
+  showOnboarding = false;
+  limits: Pick<
+    ParticipantStateResponse,
+    'max_pending_submissions' | 'max_searches_10_minutes' | 'max_votes_10_minutes'
+  > | null = null;
+  connectionStatus: LiveConnectionStatus = 'reconnecting';
   state: ParticipantStateResponse | null = null;
   participant: ParticipantRead | null = null;
   submissions: QueueEntryRead[] = [];
@@ -70,6 +83,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
 
   private stateSub: Subscription | null = null;
   private submissionsSub: Subscription | null = null;
+  private connectionSub: Subscription | null = null;
 
   ngOnInit(): void {
     const params = new URLSearchParams(window.location.search);
@@ -98,6 +112,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.stateSub?.unsubscribe();
     this.submissionsSub?.unsubscribe();
+    this.connectionSub?.unsubscribe();
     this.stateService.stop();
   }
 
@@ -105,11 +120,33 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     this.stateService.stop();
     this.stateSub?.unsubscribe();
     this.submissionsSub?.unsubscribe();
+    this.connectionSub?.unsubscribe();
     this.loading = true;
+    this.showOnboarding = false;
     const participant = await this.participantService.loadMe();
     this.authenticated = participant !== null;
     this.participant = participant;
     if (this.authenticated) {
+      if (!this.hasAcceptedRules()) {
+        try {
+          const state = await firstValueFrom(
+            this.http.get<ParticipantStateResponse>(`${this.baseUrl}/participant/state`)
+          );
+          this.limits = {
+            max_pending_submissions: state.max_pending_submissions,
+            max_searches_10_minutes: state.max_searches_10_minutes,
+            max_votes_10_minutes: state.max_votes_10_minutes,
+          };
+          this.showOnboarding = true;
+        } catch {
+          this.authenticated = false;
+          this.participant = null;
+          this.participantService.clearSession();
+        }
+        this.loading = false;
+        this.cdr.markForCheck();
+        return;
+      }
       try {
         const config = await firstValueFrom(this.participantService.getSearchConfig());
         this.searchEnabled = config.enabled;
@@ -122,6 +159,10 @@ export class ParticipateComponent implements OnInit, OnDestroy {
           this.submissions = entries;
           this.cdr.markForCheck();
         });
+        this.connectionSub = this.stateService.connectionStatus$.subscribe(status => {
+          this.connectionStatus = status;
+          this.cdr.markForCheck();
+        });
       } catch {
         this.authenticated = false;
         this.participant = null;
@@ -130,6 +171,16 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     }
     this.loading = false;
     this.cdr.markForCheck();
+  }
+
+  acceptRules(): void {
+    sessionStorage.setItem(RULES_ACCEPTED_KEY, '1');
+    this.showOnboarding = false;
+    void this.bootstrap();
+  }
+
+  private hasAcceptedRules(): boolean {
+    return sessionStorage.getItem(RULES_ACCEPTED_KEY) === '1';
   }
 
   signInGoogle(): void {
@@ -289,8 +340,9 @@ export class ParticipateComponent implements OnInit, OnDestroy {
   }
 
   votesRemainingLabel(): string {
-    const remaining = this.state?.votes_remaining ?? 2;
-    return `${remaining} de 2 votos disponibles`;
+    const remaining = this.state?.votes_remaining ?? this.limits?.max_votes_10_minutes ?? 2;
+    const max = this.state?.max_votes_10_minutes ?? this.limits?.max_votes_10_minutes ?? 2;
+    return `${remaining} de ${max} votos disponibles (cada 10 min)`;
   }
 
   statusLabel(status: string): string {

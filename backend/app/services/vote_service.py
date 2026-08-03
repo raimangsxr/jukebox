@@ -5,12 +5,16 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import QueueEntry, QueueEntryStatus, Vote
 from .queue_service import _recompute_positions
 from .state_service import build_participant_state_response, bump_revision
 
-MAX_VOTES_PER_WINDOW = 2
-WINDOW = timedelta(minutes=5)
+WINDOW = timedelta(minutes=10)
+
+
+def _max_votes_per_window() -> int:
+    return get_settings().max_votes_10minutes_per_participant
 
 
 def count_votes_in_window(
@@ -32,7 +36,7 @@ def count_votes_in_window(
 
 
 def votes_remaining(db: Session, participant_id: str) -> int:
-    return max(0, MAX_VOTES_PER_WINDOW - count_votes_in_window(db, participant_id))
+    return max(0, _max_votes_per_window() - count_votes_in_window(db, participant_id))
 
 
 def cast_vote(db: Session, participant_id: str, queue_entry_id: str) -> Vote:
@@ -47,7 +51,7 @@ def cast_vote(db: Session, participant_id: str, queue_entry_id: str) -> Vote:
             status_code=status.HTTP_409_CONFLICT,
             detail="entry not votable",
         )
-    if count_votes_in_window(db, participant_id) >= MAX_VOTES_PER_WINDOW:
+    if count_votes_in_window(db, participant_id) >= _max_votes_per_window():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="vote limit exceeded",

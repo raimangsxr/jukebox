@@ -1,3 +1,7 @@
+.admin-main {
+  overflow-x: hidden;
+}
+
 .usage-status {
   display: inline-block;
   border-radius: 9999px;

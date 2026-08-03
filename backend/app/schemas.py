@@ -153,6 +153,8 @@ class ParticipantStateResponse(BaseModel):
     queue: list[QueueEntryRead]
     votes_remaining: int
     max_pending_submissions: int
+    max_searches_10_minutes: int
+    max_votes_10_minutes: int
     event_config: EventConfigSummary
 
 

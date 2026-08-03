@@ -85,12 +85,15 @@ def build_participant_state_response(
     now_playing = get_now_playing(db)
     queue = get_all_queued(db)
 
+    settings = get_settings()
     return ParticipantStateResponse(
         revision=runtime.revision,
         now_playing=_entry_to_read(now_playing) if now_playing else None,
         queue=[_entry_to_read(e) for e in queue],
         votes_remaining=_votes_remaining(db, participant_id),
-        max_pending_submissions=get_settings().max_pending_submissions_per_participant,
+        max_pending_submissions=settings.max_pending_submissions_per_participant,
+        max_searches_10_minutes=settings.max_searchs_10minutes_per_participant,
+        max_votes_10_minutes=settings.max_votes_10minutes_per_participant,
         event_config=EventConfigSummary(
             name=config.name,
             subtitle=config.subtitle,

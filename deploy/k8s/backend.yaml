@@ -123,6 +123,16 @@ spec:
                 configMapKeyRef:
                   name: jukebox-config
                   key: JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT
+            - name: JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT
+              valueFrom:
+                configMapKeyRef:
+                  name: jukebox-config
+                  key: JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT
+            - name: JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT
+              valueFrom:
+                configMapKeyRef:
+                  name: jukebox-config
+                  key: JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT
           readinessProbe:
             httpGet:
               path: /api/health

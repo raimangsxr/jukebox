@@ -1,4 +1,8 @@
 <main class="participate-main mx-auto flex min-h-screen max-w-lg flex-col gap-6 p-4">
+  @if (authenticated && !showOnboarding) {
+    <app-live-status [status]="connectionStatus" />
+  }
+
   <header>
     <p class="text-xs uppercase tracking-[0.2em] text-jukebox-muted">Participa</p>
     <h1 class="text-2xl font-bold">Vota la cola</h1>
@@ -23,6 +27,48 @@
 
   @if (loading) {
     <p class="text-sm text-jukebox-muted">Cargando…</p>
+  } @else if (showOnboarding && limits) {
+    <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+      <h2 class="text-lg font-semibold">Normas de participación</h2>
+      <p class="mt-2 text-sm text-jukebox-muted">
+        Antes de votar o enviar canciones, revisa los límites de este evento.
+        Se aplican por persona y se reinician según se indica.
+      </p>
+      <ul class="mt-4 space-y-3 text-sm">
+        <li class="rounded-lg border border-white/10 bg-black/20 p-3">
+          <p class="font-medium">Canciones en cola</p>
+          <p class="mt-1 text-jukebox-muted">
+            Puedes tener como máximo
+            <span class="font-semibold text-white">{{ limits.max_pending_submissions }}</span>
+            canción{{ limits.max_pending_submissions === 1 ? '' : 'es' }} pendiente{{ limits.max_pending_submissions === 1 ? '' : 's' }}
+            a la vez (en revisión o en cola, según el modo del evento).
+          </p>
+        </li>
+        <li class="rounded-lg border border-white/10 bg-black/20 p-3">
+          <p class="font-medium">Búsquedas en YouTube</p>
+          <p class="mt-1 text-jukebox-muted">
+            Hasta
+            <span class="font-semibold text-white">{{ limits.max_searches_10_minutes }}</span>
+            búsquedas cada 10 minutos. Siempre puedes pegar un enlace directo.
+          </p>
+        </li>
+        <li class="rounded-lg border border-white/10 bg-black/20 p-3">
+          <p class="font-medium">Votos</p>
+          <p class="mt-1 text-jukebox-muted">
+            Hasta
+            <span class="font-semibold text-white">{{ limits.max_votes_10_minutes }}</span>
+            votos cada 10 minutos para subir canciones en la cola.
+          </p>
+        </li>
+      </ul>
+      <button
+        type="button"
+        class="mt-5 w-full rounded-lg bg-jukebox-accent px-4 py-3 text-sm font-semibold text-white"
+        (click)="acceptRules()"
+      >
+        Entendido, participar
+      </button>
+    </section>
   } @else if (!authenticated) {
     <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
       <p class="text-sm text-jukebox-muted">

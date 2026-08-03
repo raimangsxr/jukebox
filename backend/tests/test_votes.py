@@ -121,7 +121,7 @@ def test_window_expiry_allows_vote_after_rollover(
     assert _vote(dev_participant_client, queued_entry.id).status_code == 201
     assert _vote(dev_participant_client, second_queued_entry.id).status_code == 201
 
-    old_time = datetime.now(timezone.utc) - timedelta(minutes=6)
+    old_time = datetime.now(timezone.utc) - timedelta(minutes=11)
     for vote in db_session.query(Vote).filter(Vote.participant_id == participant_id).all():
         vote.created_at = old_time
     db_session.commit()

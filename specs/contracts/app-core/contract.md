@@ -191,6 +191,25 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - Admin **Moderación**: mode selector + confirm dialog; Libre informational banner; bound to `GET/PUT /api/event-config/queue-mode` via `EventConfigService.updateQueueMode`
 - `/participar`: no mode indicator; submit response `status` reflects mode (`pending_review` vs `queued`); free submit triggers existing `song.approved` toast via SSE
 
+## Participant limits UX (016)
+
+### Live connection status
+
+- `LiveStatusComponent` — fixed top-right badge on `/`, `/admin`, authenticated `/participar` (post-rules)
+- States: hidden when SSE connected; **Reconectando…** during reconnect; **Modo respaldo** during polling fallback (single label, no overlap)
+- `LiveConnectionManager` shared by `DisplayStateService` and `ParticipantStateService`; `connectionStatus$` observable
+
+### Admin moderation mobile
+
+- Pending table on `md+`; card layout below `md` with title, duration, submitter, preview link, reject reason, approve/reject buttons
+- `.admin-main { overflow-x: hidden }`
+
+### Participant rules onboarding
+
+- After auth, if `sessionStorage` lacks `jukebox.participantRulesAccepted`, show **Normas de participación** with limits from `GET /api/participant/state` (`max_pending_submissions`, `max_searches_10_minutes`, `max_votes_10_minutes`)
+- **Entendido, participar** sets session flag and starts full participate UI + SSE
+- `votesRemainingLabel` uses dynamic `max_votes_10_minutes` (10-minute window)
+
 ## Change history
 
 - **001-foundation-jukebox** — Angular scaffold, four routes, placeholder layouts
@@ -203,3 +222,4 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **009-admin-api-key-usage** — Admin per-key YouTube API usage table with SSE updates
 - **010-hardening-and-polish** — editable Evento config + theme, responsive kiosk, per-row moderation, QR caching, 404 page, dead-dep removal, guard/interceptor/service tests
 - **013-queue-approval-mode** — queue mode selector in Moderación (Moderado/Libre), confirm before mode change, free-mode direct enqueue UX
+- **016-participant-limits-ux** — live connection badge, admin mobile moderation cards, participant rules screen, ENV-driven search/vote limits

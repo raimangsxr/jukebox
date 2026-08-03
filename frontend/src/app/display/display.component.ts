@@ -8,6 +8,7 @@ import {
 
 import { AuthService } from '../services/auth.service';
 import { DisplayStateService } from '../services/display-state.service';
+import { LiveStatusComponent } from '../components/live-status.component';
 import { QrPanelComponent } from './qr-panel.component';
 import { QueueStripComponent } from './queue-strip.component';
 import { YoutubePlayerComponent } from './youtube-player.component';
@@ -20,6 +21,7 @@ import { YoutubePlayerComponent } from './youtube-player.component';
     YoutubePlayerComponent,
     QrPanelComponent,
     QueueStripComponent,
+    LiveStatusComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './display.component.html',

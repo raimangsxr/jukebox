@@ -66,7 +66,7 @@ Ambiguous subscribers default to participant scope (least privilege). This repla
 
 No `notification` on reject, vote reorder, or entries without `submitted_by_participant_id`.
 
-`GET /api/participant/state` returns `ParticipantStateResponse` (all `queued` entries, `votes_remaining`, `max_pending_submissions`). SSE does not include `votes_remaining` or `max_pending_submissions`; clients merge per participant state snapshot.
+`GET /api/participant/state` returns `ParticipantStateResponse` (all `queued` entries, `votes_remaining`, `max_pending_submissions`, `max_searches_10_minutes`, `max_votes_10_minutes`). SSE does not include participant limit fields; clients merge per participant state snapshot.
 
 ## Google OAuth (participant, 006)
 
@@ -137,7 +137,7 @@ Query: `q` (min length after trim per `JUKEBOX_YOUTUBE_SEARCH_MIN_QUERY_LENGTH`,
 |------|--------|----------|
 | Not authenticated | 401 | `not authenticated` |
 | Query too short / whitespace-only | 422 | `invalid search query` |
-| Rate limit (10 / 5 min) | 429 | `search rate limit exceeded` |
+| Rate limit (configurable / 10 min) | 429 | `search rate limit exceeded` |
 | Network / upstream failure | 503 | `youtube search unavailable` |
 | All keys exhausted | 503 | `youtube search unavailable` |
 
@@ -181,7 +181,7 @@ API returns stable English `detail` strings; frontend maps to Spanish.
 
 Participants may submit while they already have songs in `queued` or `playing`; only the pending limit and duplicate-video rules apply.
 
-`JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` (default `2`, min `1`) controls the per-participant `pending_review` cap. `GET /api/participant/state` exposes `max_pending_submissions` for client UX.
+`JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` (default `2`, min `1`) controls the per-participant `pending_review` cap. `JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT` (default `10`, min `1`) and `JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT` (default `2`, min `1`) control rolling 10-minute search and vote limits. `GET /api/participant/state` exposes all three maxima for client UX.
 
 `POST /api/queue/skip`: advance when `playing`; start when idle + `queued`; 409 `nothing to advance` when empty.
 
@@ -236,7 +236,7 @@ Participants may submit while they already have songs in `queued` or `playing`; 
 
 On application startup:
 
-1. `ensure_operator` — creates operator user from `JUKEBOX_OPERATOR_USERNAME` / `JUKEBOX_OPERATOR_PASSWORD` if missing (password ≥ 12 chars).
+1. `ensure_operator` — creates operator user from `JUKEBOX_OPERATOR_USERNAME` / `JUKEBOX_OPERATOR_PASSWORD` if missing; if the user exists but the env password differs, updates the stored hash (password ≥ 12 chars). **Not** the PostgreSQL role — DB access uses `JUKEBOX_DATABASE_URL` only.
 2. `ensure_event_config` — creates singleton `event_config` row (`id=1`) with defaults if missing.
 3. `ensure_jukebox_runtime` — creates singleton `jukebox_runtime` row (`id=1`) if missing.
 
@@ -342,6 +342,8 @@ SSE fan-out, the search rate limiter (with idle-bucket eviction), YouTube key ro
 | `JUKEBOX_YOUTUBE_SEARCH_MAX_RESULTS` | Max results per search (default 10) |
 | `JUKEBOX_YOUTUBE_SEARCH_MIN_QUERY_LENGTH` | Min query length after trim (default 2) |
 | `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` | Max submissions per participant per mode: counts `pending_review` in **moderated**, `queued` in **free** (default 2, min 1) |
+| `JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT` | Max YouTube searches per participant per 10-minute rolling window (default 10, min 1) |
+| `JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT` | Max votes per participant per 10-minute rolling window (default 2, min 1) |
 
 ## Error shape
 

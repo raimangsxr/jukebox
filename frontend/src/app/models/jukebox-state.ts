@@ -33,6 +33,8 @@ export interface StateResponse {
 export interface ParticipantStateResponse extends StateResponse {
   votes_remaining: number;
   max_pending_submissions: number;
+  max_searches_10_minutes: number;
+  max_votes_10_minutes: number;
 }
 
 export type NotificationEventType = 'song.approved' | 'song.up_next';

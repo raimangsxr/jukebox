@@ -3,8 +3,13 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
-_WINDOW = timedelta(minutes=5)
-_LIMIT = 10
+from ..config import get_settings
+
+_WINDOW = timedelta(minutes=10)
+
+
+def _limit() -> int:
+    return get_settings().max_searchs_10minutes_per_participant
 # Periodically drop buckets for participants who have gone idle so memory stays
 # bounded to recently-active participants (010-hardening-and-polish, FR-010).
 _SWEEP_EVERY = 256
@@ -40,7 +45,7 @@ def check_and_record(participant_id: str, now: datetime | None = None) -> bool:
     bucket = _timestamps[participant_id]
     while bucket and bucket[0] < window_start:
         bucket.popleft()
-    if len(bucket) >= _LIMIT:
+    if len(bucket) >= _limit():
         return False
     bucket.append(now)
     return True
