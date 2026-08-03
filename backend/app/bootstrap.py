@@ -15,14 +15,14 @@ from .models import (
     JukeboxRuntime,
     User,
 )
-from .security import hash_password
+from .security import hash_password, verify_password
 
 
 logger = logging.getLogger(__name__)
 
 
 def ensure_operator(db: Session, username: str, password: str) -> bool:
-    """Idempotently create the operator user."""
+    """Idempotently create the operator user and sync password from env."""
     if not username or not password:
         raise ValueError(
             "JUKEBOX_OPERATOR_USERNAME and JUKEBOX_OPERATOR_PASSWORD must be set"
@@ -34,7 +34,16 @@ def ensure_operator(db: Session, username: str, password: str) -> bool:
 
     existing = db.query(User).filter(User.username == username).one_or_none()
     if existing is not None:
-        logger.info("Operator user %r already exists", username)
+        if not verify_password(password, existing.password_hash):
+            existing.password_hash = hash_password(password)
+            db.commit()
+            db.refresh(existing)
+            logger.info(
+                "Updated operator password for %r from JUKEBOX_OPERATOR_PASSWORD",
+                username,
+            )
+        else:
+            logger.info("Operator user %r already exists", username)
         return False
 
     user = User(username=username, password_hash=hash_password(password))

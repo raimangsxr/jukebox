@@ -118,7 +118,19 @@ changes:
       Autoplay-with-sound detection on kiosk; unmuted player when capable;
       playback_status SSE + admin audio health hint.
 
+  - id: 016-participant-limits-ux
+    path: specs/changes/016-participant-limits-ux/
+    status: in_progress
+    modifies:
+      - backend-api
+      - app-core
+      - ops-platform
+    description: >-
+      Live connection status badge (SSE + fallback), admin moderation mobile
+      layout, participant rules screen after login, ENV-configurable search/vote
+      limits (10-minute windows).
+
 active:
-  change: null
+  change: 016-participant-limits-ux
   contract: specs/contracts/backend-api/contract.md
-  context_pack: null
+  context_pack: specs/changes/016-participant-limits-ux/context-pack.md

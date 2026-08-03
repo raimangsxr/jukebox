@@ -7,12 +7,13 @@ import {
   NotificationEventRead,
   ParticipantStateResponse,
   QueueEntryRead,
-  StateResponse
+  StateResponse,
 } from '../models/jukebox-state';
 import { NotificationToastService } from './notification-toast.service';
 import { notificationTargetsParticipant } from './notification-utils';
 import { ParticipantService } from './participant.service';
 import { applyTheme } from '../theme.util';
+import { LiveConnectionManager, LiveConnectionStatus } from './live-connection';
 
 @Injectable({ providedIn: 'root' })
 export class ParticipantStateService implements OnDestroy {
@@ -23,9 +24,9 @@ export class ParticipantStateService implements OnDestroy {
 
   private readonly stateSubject = new BehaviorSubject<ParticipantStateResponse | null>(null);
   private readonly submissionsSubject = new BehaviorSubject<QueueEntryRead[]>([]);
-  private eventSource: EventSource | null = null;
-  private reconnectAttempt = 0;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly connectionStatusSubject =
+    new BehaviorSubject<LiveConnectionStatus>('reconnecting');
+  private liveConnection: LiveConnectionManager | null = null;
   private started = false;
   private votesRemaining = 2;
 
@@ -35,12 +36,19 @@ export class ParticipantStateService implements OnDestroy {
   readonly submissions$: Observable<QueueEntryRead[]> =
     this.submissionsSubject.asObservable();
 
+  readonly connectionStatus$: Observable<LiveConnectionStatus> =
+    this.connectionStatusSubject.asObservable();
+
   ngOnDestroy(): void {
     this.stop();
   }
 
   get snapshot(): ParticipantStateResponse | null {
     return this.stateSubject.value;
+  }
+
+  get connectionStatus(): LiveConnectionStatus {
+    return this.connectionStatusSubject.value;
   }
 
   async start(): Promise<void> {
@@ -50,19 +58,14 @@ export class ParticipantStateService implements OnDestroy {
     this.started = true;
     await this.refresh();
     await this.refreshSubmissions();
-    this.connectSse();
+    this.startLiveConnection();
   }
 
   stop(): void {
     this.started = false;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
+    this.liveConnection?.stop();
+    this.liveConnection = null;
+    this.connectionStatusSubject.next('reconnecting');
   }
 
   async refresh(): Promise<ParticipantStateResponse> {
@@ -111,66 +114,53 @@ export class ParticipantStateService implements OnDestroy {
     this.notificationToast.enqueue(event);
   }
 
-  private connectSse(): void {
-    if (this.eventSource) {
-      this.eventSource.close();
-    }
-    const url = `${this.baseUrl}/events/stream`;
-    this.eventSource = new EventSource(url, { withCredentials: true });
-
-    this.eventSource.addEventListener('state', (event: MessageEvent<string>) => {
-      try {
-        const sseState = JSON.parse(event.data) as StateResponse;
-        const current = this.stateSubject.value;
-        const merged: ParticipantStateResponse = {
-          revision: sseState.revision,
-          now_playing: sseState.now_playing,
-          queue: sseState.queue,
-          event_config: sseState.event_config,
-          votes_remaining: current?.votes_remaining ?? this.votesRemaining,
-          max_pending_submissions: current?.max_pending_submissions ?? 2,
-        };
-        applyTheme(merged.event_config?.theme);
-        this.stateSubject.next(merged);
-        void this.refreshSubmissions();
-        this.reconnectAttempt = 0;
-      } catch {
-        // ignore malformed payloads
-      }
-    });
-
-    this.eventSource.addEventListener('notification', (event: MessageEvent<string>) => {
-      try {
-        const payload = JSON.parse(event.data) as NotificationEventRead;
-        this.handleNotificationEvent(
-          payload,
-          this.participantService.participant()?.id ?? null
-        );
-      } catch {
-        // ignore malformed payloads
-      }
-    });
-
-    this.eventSource.onerror = () => {
-      this.eventSource?.close();
-      this.eventSource = null;
-      this.scheduleReconnect();
-    };
-  }
-
-  private scheduleReconnect(): void {
-    if (!this.started) {
-      return;
-    }
-    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, 30000);
-    this.reconnectAttempt += 1;
-    this.reconnectTimer = setTimeout(async () => {
-      try {
+  private startLiveConnection(): void {
+    this.liveConnection?.stop();
+    this.liveConnection = new LiveConnectionManager({
+      url: `${this.baseUrl}/events/stream`,
+      withCredentials: true,
+      onPoll: async () => {
         await this.refresh();
-      } catch {
-        // keep last merged state; reconnect SSE anyway
-      }
-      this.connectSse();
-    }, delay);
+        await this.refreshSubmissions();
+      },
+      eventListeners: {
+        state: (event: MessageEvent<string>) => {
+          try {
+            const sseState = JSON.parse(event.data) as StateResponse;
+            const current = this.stateSubject.value;
+            const merged: ParticipantStateResponse = {
+              revision: sseState.revision,
+              now_playing: sseState.now_playing,
+              queue: sseState.queue,
+              event_config: sseState.event_config,
+              votes_remaining: current?.votes_remaining ?? this.votesRemaining,
+              max_pending_submissions: current?.max_pending_submissions ?? 2,
+              max_searches_10_minutes: current?.max_searches_10_minutes ?? 10,
+              max_votes_10_minutes: current?.max_votes_10_minutes ?? 2,
+            };
+            applyTheme(merged.event_config?.theme);
+            this.stateSubject.next(merged);
+            void this.refreshSubmissions();
+          } catch {
+            // ignore malformed payloads
+          }
+        },
+        notification: (event: MessageEvent<string>) => {
+          try {
+            const payload = JSON.parse(event.data) as NotificationEventRead;
+            this.handleNotificationEvent(
+              payload,
+              this.participantService.participant()?.id ?? null
+            );
+          } catch {
+            // ignore malformed payloads
+          }
+        },
+      },
+    });
+    this.liveConnection.status$.subscribe(status => {
+      this.connectionStatusSubject.next(status);
+    });
+    this.liveConnection.start();
   }
 }

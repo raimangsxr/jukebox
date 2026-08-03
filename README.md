@@ -17,8 +17,10 @@ docker compose up --build
 
 | Service  | URL |
 |----------|-----|
-| Frontend | http://localhost:4200 |
+| Frontend | http://localhost:4200 (LAN: `http://<your-ip>:4200`) |
 | Backend  | http://localhost:8000/api/health |
+
+The dev frontend proxies `/api` to the backend, so login and SSE work from any host that can reach port 4200 (no extra CORS entry needed).
 
 ### Local dev (without Docker)
 

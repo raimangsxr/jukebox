@@ -24,7 +24,8 @@ def test_expired_buckets_are_evicted():
 def test_limit_still_enforced_within_window():
     rl.reset_for_tests()
     now = datetime(2021, 6, 1, 12, 0, tzinfo=timezone.utc)
-    for _ in range(rl._LIMIT):
+    limit = rl._limit()
+    for _ in range(limit):
         assert rl.check_and_record("p1", now=now) is True
     assert rl.check_and_record("p1", now=now) is False
     rl.reset_for_tests()

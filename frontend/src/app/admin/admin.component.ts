@@ -22,6 +22,8 @@ import { DisplayStateService } from '../services/display-state.service';
 import { EventConfigService } from '../services/event-config.service';
 import { QueueAdminService } from '../services/queue-admin.service';
 import { PlaybackAudioMode } from '../models/playback-status';
+import { LiveStatusComponent } from '../components/live-status.component';
+import { LiveConnectionStatus } from '../services/live-connection';
 
 interface ApiTokenRead {
   id: string;
@@ -46,7 +48,7 @@ interface TokenListResponse {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LiveStatusComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css'
@@ -87,6 +89,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   queueModeSaving = false;
   pendingQueueModeChange: QueueMode | null = null;
   playbackAudioMode: PlaybackAudioMode = 'idle';
+  connectionStatus: LiveConnectionStatus = 'reconnecting';
   private stateSubscription: Subscription | null = null;
   private apiKeyUsageSubscription: Subscription | null = null;
   private playbackStatusSubscription: Subscription | null = null;
@@ -108,6 +111,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     });
     this.playbackStatusSubscription = this.displayState.playbackStatus$.subscribe(status => {
       this.playbackAudioMode = status?.audio_mode ?? 'idle';
+      this.cdr.markForCheck();
+    });
+    this.displayState.connectionStatus$.subscribe(status => {
+      this.connectionStatus = status;
       this.cdr.markForCheck();
     });
   }

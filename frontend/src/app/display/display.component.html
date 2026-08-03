@@ -18,6 +18,8 @@
   class="kiosk-root flex flex-col overflow-hidden p-4 md:p-6"
   [style.--jukebox-app-height.px]="(displayState.state$ | async)?.event_config?.app_height_px || 720"
 >
+  <app-live-status [status]="(displayState.connectionStatus$ | async) ?? 'connected'" />
+
   <header class="mb-3 shrink-0">
     <h1 class="text-2xl font-bold text-jukebox-primary">
       {{ (displayState.state$ | async)?.event_config?.name || 'AMRN Jukebox' }}

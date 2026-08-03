@@ -105,6 +105,8 @@ Git-tracked `secret.yaml` uses `REPLACE_ME` placeholders only. Operator applies 
 | `JUKEBOX_GOOGLE_REDIRECT_URI` | `https://jukebox.rromani.eu/api/auth/google/callback` |
 | `JUKEBOX_PARTICIPANT_OAUTH_RETURN_URL` | `https://jukebox.rromani.eu/participar` |
 | `JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` | `"2"` — wired in `backend.yaml` only |
+| `JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT` | `"10"` |
+| `JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT` | `"2"` |
 
 Register the redirect URI in Google Cloud Console for the OAuth client.
 
