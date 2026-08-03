@@ -28,6 +28,10 @@ import {
   nextActivePathOnUrlEdit,
   resolveActivePathOnUrlFocus
 } from './participate-submit.util';
+import {
+  voteLimitExceededMessage,
+  votesRemainingLabel,
+} from '../participant-limits.util';
 
 const STATUS_LABELS: Record<string, string> = {
   pending_review: 'Pendiente de revisión',
@@ -61,6 +65,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     ParticipantStateResponse,
     'max_pending_submissions' | 'max_searches_10_minutes' | 'max_votes_10_minutes'
   > | null = null;
+  eventName: string | null = null;
   connectionStatus: LiveConnectionStatus = 'reconnecting';
   state: ParticipantStateResponse | null = null;
   participant: ParticipantRead | null = null;
@@ -123,6 +128,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     this.connectionSub?.unsubscribe();
     this.loading = true;
     this.showOnboarding = false;
+    this.eventName = null;
     const participant = await this.participantService.loadMe();
     this.authenticated = participant !== null;
     this.participant = participant;
@@ -137,6 +143,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
             max_searches_10_minutes: state.max_searches_10_minutes,
             max_votes_10_minutes: state.max_votes_10_minutes,
           };
+          this.eventName = state.event_config.name;
           this.showOnboarding = true;
         } catch {
           this.authenticated = false;
@@ -230,7 +237,10 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     }
     this.searchMessage = null;
     if (!isSearchQueryValid(this.searchQuery)) {
-      this.searchMessage = this.participantService.mapSearchError('invalid search query');
+      this.searchMessage = this.participantService.mapSearchError(
+        'invalid search query',
+        this.resolvedLimits().max_searches_10_minutes
+      );
       this.cdr.markForCheck();
       return;
     }
@@ -250,7 +260,10 @@ export class ParticipateComponent implements OnInit, OnDestroy {
       }
     } catch (err: unknown) {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
-      this.searchMessage = this.participantService.mapSearchError(detail);
+      this.searchMessage = this.participantService.mapSearchError(
+        detail,
+        this.resolvedLimits().max_searches_10_minutes
+      );
     } finally {
       this.searchLoading = false;
       this.cdr.markForCheck();
@@ -305,7 +318,7 @@ export class ParticipateComponent implements OnInit, OnDestroy {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
       this.errorMessage = this.participantService.mapSubmitError(
         detail,
-        this.state?.max_pending_submissions ?? 2
+        this.resolvedLimits().max_pending_submissions
       );
     } finally {
       this.submitting = false;
@@ -327,7 +340,9 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     } catch (err: unknown) {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
       if (detail === 'vote limit exceeded') {
-        this.errorMessage = 'Has agotado tus votos. Espera unos minutos para votar de nuevo.';
+        this.errorMessage = voteLimitExceededMessage(
+          this.resolvedLimits().max_votes_10_minutes
+        );
       } else if (detail === 'entry not votable') {
         this.errorMessage = 'Esta canción ya no admite votos.';
       } else {
@@ -339,10 +354,31 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     }
   }
 
+  eventTitle(): string {
+    return this.state?.event_config?.name ?? this.eventName ?? 'Vota la cola';
+  }
+
   votesRemainingLabel(): string {
-    const remaining = this.state?.votes_remaining ?? this.limits?.max_votes_10_minutes ?? 2;
-    const max = this.state?.max_votes_10_minutes ?? this.limits?.max_votes_10_minutes ?? 2;
-    return `${remaining} de ${max} votos disponibles (cada 10 min)`;
+    const limits = this.resolvedLimits();
+    const remaining = this.state?.votes_remaining ?? limits.max_votes_10_minutes;
+    return votesRemainingLabel(remaining, limits.max_votes_10_minutes);
+  }
+
+  private resolvedLimits(): Pick<
+    ParticipantStateResponse,
+    'max_pending_submissions' | 'max_searches_10_minutes' | 'max_votes_10_minutes'
+  > {
+    if (this.state) {
+      return {
+        max_pending_submissions: this.state.max_pending_submissions,
+        max_searches_10_minutes: this.state.max_searches_10_minutes,
+        max_votes_10_minutes: this.state.max_votes_10_minutes,
+      };
+    }
+    if (this.limits) {
+      return this.limits;
+    }
+    throw new Error('participant limits are not loaded');
   }
 
   statusLabel(status: string): string {

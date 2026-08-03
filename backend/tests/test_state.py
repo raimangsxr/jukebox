@@ -19,6 +19,9 @@ def test_state_returns_snapshot(authed_client, playing_entry, queued_entry):
     assert data["queue"][0]["id"] == queued_entry.id
     assert data["queue"][0]["vote_count"] == 3
     assert data["event_config"]["queue_visible_count"] == 8
+    assert data["participant_limits"]["max_pending_submissions"] == 2
+    assert data["participant_limits"]["max_searches_10_minutes"] == 10
+    assert data["participant_limits"]["max_votes_10_minutes"] == 2
 
 
 def test_state_queue_visible_count_cap(authed_client, db_session):

@@ -28,7 +28,6 @@ export class ParticipantStateService implements OnDestroy {
     new BehaviorSubject<LiveConnectionStatus>('reconnecting');
   private liveConnection: LiveConnectionManager | null = null;
   private started = false;
-  private votesRemaining = 2;
 
   readonly state$: Observable<ParticipantStateResponse | null> =
     this.stateSubject.asObservable();
@@ -72,7 +71,6 @@ export class ParticipantStateService implements OnDestroy {
     const state = await firstValueFrom(
       this.http.get<ParticipantStateResponse>(`${this.baseUrl}/participant/state`)
     );
-    this.votesRemaining = state.votes_remaining;
     applyTheme(state.event_config?.theme);
     this.stateSubject.next(state);
     return state;
@@ -93,7 +91,6 @@ export class ParticipantStateService implements OnDestroy {
   }
 
   applyVoteResponse(votesRemaining: number, state?: ParticipantStateResponse): void {
-    this.votesRemaining = votesRemaining;
     if (state) {
       this.stateSubject.next(state);
     } else {
@@ -128,15 +125,21 @@ export class ParticipantStateService implements OnDestroy {
           try {
             const sseState = JSON.parse(event.data) as StateResponse;
             const current = this.stateSubject.value;
+            if (!current) {
+              void this.refresh();
+              return;
+            }
+            const limits = sseState.participant_limits;
             const merged: ParticipantStateResponse = {
+              ...current,
               revision: sseState.revision,
               now_playing: sseState.now_playing,
               queue: sseState.queue,
               event_config: sseState.event_config,
-              votes_remaining: current?.votes_remaining ?? this.votesRemaining,
-              max_pending_submissions: current?.max_pending_submissions ?? 2,
-              max_searches_10_minutes: current?.max_searches_10_minutes ?? 10,
-              max_votes_10_minutes: current?.max_votes_10_minutes ?? 2,
+              participant_limits: limits,
+              max_pending_submissions: limits.max_pending_submissions,
+              max_searches_10_minutes: limits.max_searches_10_minutes,
+              max_votes_10_minutes: limits.max_votes_10_minutes,
             };
             applyTheme(merged.event_config?.theme);
             this.stateSubject.next(merged);

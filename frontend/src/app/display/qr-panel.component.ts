@@ -9,6 +9,7 @@ import {
 import QRCode from 'qrcode';
 
 import { EventConfigSummary } from '../models/jukebox-state';
+import { qrPanelVoteHint } from '../participant-limits.util';
 
 @Component({
   selector: 'app-qr-panel',
@@ -44,8 +45,9 @@ import { EventConfigSummary } from '../models/jukebox-state';
           <li>Vota tus favoritas en la cola.</li>
         </ol>
 
-        <p class="text-[10px] text-jukebox-muted/90 md:text-xs">
-          Tienes <span class="font-semibold text-jukebox-accent">2 votos cada 5 minutos</span>.
+        <p *ngIf="voteHint" class="text-[10px] text-jukebox-muted/90 md:text-xs">
+          Tienes
+          <span class="font-semibold text-jukebox-accent">{{ voteHint }}</span>.
         </p>
       </div>
     </div>
@@ -54,11 +56,15 @@ import { EventConfigSummary } from '../models/jukebox-state';
 export class QrPanelComponent implements OnChanges {
 
   @Input() eventConfig: EventConfigSummary | null = null;
+  @Input() maxVotes10Minutes: number | null = null;
 
   qrDataUrl: string | null = null;
+  voteHint: string | null = null;
   private renderedTarget: string | null = null;
 
   ngOnChanges(_changes: SimpleChanges): void {
+    this.voteHint =
+      this.maxVotes10Minutes != null ? qrPanelVoteHint(this.maxVotes10Minutes) : null;
     void this.renderQr();
   }
 

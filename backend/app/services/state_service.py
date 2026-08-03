@@ -12,7 +12,13 @@ from ..models import (
     QueueEntry,
     QueueEntryStatus,
 )
-from ..schemas import EventConfigSummary, ParticipantStateResponse, QueueEntryRead, StateResponse
+from ..schemas import (
+    EventConfigSummary,
+    ParticipantLimitsRead,
+    ParticipantStateResponse,
+    QueueEntryRead,
+    StateResponse,
+)
 from .sse_hub import broadcast_state
 
 
@@ -72,6 +78,15 @@ def get_all_queued(db: Session) -> list[QueueEntry]:
     return list(db.execute(stmt).scalars().all())
 
 
+def _participant_limits_from_settings() -> ParticipantLimitsRead:
+    settings = get_settings()
+    return ParticipantLimitsRead(
+        max_pending_submissions=settings.max_pending_submissions_per_participant,
+        max_searches_10_minutes=settings.max_searchs_10minutes_per_participant,
+        max_votes_10_minutes=settings.max_votes_10minutes_per_participant,
+    )
+
+
 def build_participant_state_response(
     db: Session, participant_id: str
 ) -> ParticipantStateResponse:
@@ -85,15 +100,16 @@ def build_participant_state_response(
     now_playing = get_now_playing(db)
     queue = get_all_queued(db)
 
-    settings = get_settings()
+    limits = _participant_limits_from_settings()
     return ParticipantStateResponse(
         revision=runtime.revision,
         now_playing=_entry_to_read(now_playing) if now_playing else None,
         queue=[_entry_to_read(e) for e in queue],
         votes_remaining=_votes_remaining(db, participant_id),
-        max_pending_submissions=settings.max_pending_submissions_per_participant,
-        max_searches_10_minutes=settings.max_searchs_10minutes_per_participant,
-        max_votes_10_minutes=settings.max_votes_10minutes_per_participant,
+        max_pending_submissions=limits.max_pending_submissions,
+        max_searches_10_minutes=limits.max_searches_10_minutes,
+        max_votes_10_minutes=limits.max_votes_10_minutes,
+        participant_limits=limits,
         event_config=EventConfigSummary(
             name=config.name,
             subtitle=config.subtitle,
@@ -124,4 +140,5 @@ def build_state_response(db: Session) -> StateResponse:
             theme=config.theme,
             queue_visible_count=config.queue_visible_count,
         ),
+        participant_limits=_participant_limits_from_settings(),
     )

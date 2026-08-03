@@ -98,11 +98,18 @@ class PendingQueueEntryRead(QueueEntryRead):
     submitted_by_display_name: str | None = None
 
 
+class ParticipantLimitsRead(BaseModel):
+    max_pending_submissions: int
+    max_searches_10_minutes: int
+    max_votes_10_minutes: int
+
+
 class StateResponse(BaseModel):
     revision: int
     now_playing: QueueEntryRead | None = None
     queue: list[QueueEntryRead]
     event_config: EventConfigSummary
+    participant_limits: ParticipantLimitsRead
 
 
 PlaybackAudioMode = Literal["idle", "sound", "muted"]
@@ -156,6 +163,7 @@ class ParticipantStateResponse(BaseModel):
     max_searches_10_minutes: int
     max_votes_10_minutes: int
     event_config: EventConfigSummary
+    participant_limits: ParticipantLimitsRead
 
 
 class VoteCreateRequest(BaseModel):

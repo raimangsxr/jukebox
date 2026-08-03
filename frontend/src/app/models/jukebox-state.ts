@@ -6,6 +6,12 @@ export interface EventConfigSummary {
   queue_visible_count: number;
 }
 
+export interface ParticipantLimits {
+  max_pending_submissions: number;
+  max_searches_10_minutes: number;
+  max_votes_10_minutes: number;
+}
+
 export interface QueueEntryRead {
   id: string;
   youtube_video_id: string;
@@ -28,6 +34,7 @@ export interface StateResponse {
   now_playing: QueueEntryRead | null;
   queue: QueueEntryRead[];
   event_config: EventConfigSummary;
+  participant_limits: ParticipantLimits;
 }
 
 export interface ParticipantStateResponse extends StateResponse {

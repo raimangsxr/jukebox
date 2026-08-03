@@ -6,6 +6,10 @@ import { environment } from '../../environments/environment';
 import { QueueEntryRead } from '../models/jukebox-state';
 import { ParticipantMeResponse } from '../models/participant-state';
 import { SearchConfigResponse, SearchResponse } from '../models/youtube-search';
+import {
+  pendingSubmissionLimitMessage,
+  searchRateLimitMessage,
+} from '../participant-limits.util';
 
 const SUBMIT_ERROR_MESSAGES: Record<string, string> = {
   'video already in queue':
@@ -15,8 +19,6 @@ const SUBMIT_ERROR_MESSAGES: Record<string, string> = {
 };
 
 const SEARCH_ERROR_MESSAGES: Record<string, string> = {
-  'search rate limit exceeded':
-    'Has hecho demasiadas búsquedas. Espera unos minutos o pega un enlace.',
   'youtube search unavailable':
     'La búsqueda no está disponible ahora. Puedes pegar un enlace de YouTube.',
   'invalid search query': 'Escribe al menos 2 caracteres para buscar.',
@@ -60,19 +62,22 @@ export class ParticipantService {
     return null;
   }
 
-  mapSubmitError(detail: string | undefined, maxPending = 2): string {
+  mapSubmitError(detail: string | undefined, maxPending: number): string {
     if (!detail) {
       return 'No se pudo enviar la canción.';
     }
     if (detail === 'pending submission limit reached') {
-      return `Has alcanzado el límite de canciones pendientes (${maxPending}).`;
+      return pendingSubmissionLimitMessage(maxPending);
     }
     return SUBMIT_ERROR_MESSAGES[detail] ?? 'No se pudo enviar la canción.';
   }
 
-  mapSearchError(detail: string | undefined): string {
+  mapSearchError(detail: string | undefined, maxSearches: number): string {
     if (!detail) {
       return 'No se pudo completar la búsqueda.';
+    }
+    if (detail === 'search rate limit exceeded') {
+      return searchRateLimitMessage(maxSearches);
     }
     return SEARCH_ERROR_MESSAGES[detail] ?? 'No se pudo completar la búsqueda.';
   }
