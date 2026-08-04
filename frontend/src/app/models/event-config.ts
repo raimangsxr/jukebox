@@ -7,6 +7,7 @@ export interface EventConfigRead {
   theme: string;
   queue_visible_count: number;
   queue_mode: QueueMode;
+  filler_auto_inject_enabled: boolean;
   updated_at: string;
 }
 
@@ -20,4 +21,8 @@ export interface EventConfigUpdate {
 
 export interface QueueModeUpdate {
   queue_mode: QueueMode;
+}
+
+export interface FillerAutoInjectUpdate {
+  filler_auto_inject_enabled: boolean;
 }

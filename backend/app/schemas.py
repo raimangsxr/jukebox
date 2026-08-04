@@ -64,11 +64,16 @@ class EventConfigRead(EventConfigSummary):
     model_config = ConfigDict(from_attributes=True)
 
     queue_mode: QueueModeLiteral
+    filler_auto_inject_enabled: bool
     updated_at: datetime
 
 
 class QueueModeUpdate(BaseModel):
     queue_mode: QueueModeLiteral
+
+
+class FillerAutoInjectUpdate(BaseModel):
+    filler_auto_inject_enabled: bool
 
 
 class EventConfigUpdate(BaseModel):
@@ -77,6 +82,16 @@ class EventConfigUpdate(BaseModel):
     app_height_px: int = Field(ge=240, le=4320)
     theme: str = Field(min_length=1, max_length=8)
     queue_visible_count: int = Field(ge=1, le=50)
+
+
+QueueEntryPriorityLiteral = Literal["normal", "low"]
+QueueEntrySourceLiteral = Literal[
+    "participant",
+    "operator_filler",
+    "operator_direct",
+    "auto_inject",
+    "operator_requeue",
+]
 
 
 class QueueEntryRead(BaseModel):
@@ -92,6 +107,7 @@ class QueueEntryRead(BaseModel):
     rejection_reason: str | None = None
     duration_sec: int | None = None
     created_at: datetime
+    priority: QueueEntryPriorityLiteral = "normal"
 
 
 class PendingQueueEntryRead(QueueEntryRead):
@@ -126,6 +142,77 @@ class PlaybackStatusUpdate(BaseModel):
 
 class PendingListResponse(BaseModel):
     entries: list[PendingQueueEntryRead]
+
+
+class HistoryQueueEntryRead(QueueEntryRead):
+    finished_at: datetime
+    submitted_by_display_name: str | None = None
+    source: QueueEntrySourceLiteral
+
+
+class HistoryListResponse(BaseModel):
+    entries: list[HistoryQueueEntryRead]
+    total: int
+    page: int
+    page_size: int
+
+
+class FillerReserveEntryRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    youtube_video_id: str
+    title: str
+    thumbnail_url: str | None = None
+    duration_sec: int | None = None
+    position: int
+    created_at: datetime
+
+
+class FillerReserveListResponse(BaseModel):
+    entries: list[FillerReserveEntryRead]
+
+
+class FillerReserveAddRequest(BaseModel):
+    youtube_url_or_id: str = Field(min_length=1, max_length=500)
+    search_query: str | None = Field(default=None, max_length=500)
+
+
+class OperatorQueueSubmitRequest(BaseModel):
+    youtube_url_or_id: str = Field(min_length=1, max_length=500)
+    search_query: str | None = Field(default=None, max_length=500)
+
+
+class FillerReserveReorderRequest(BaseModel):
+    ordered_ids: list[str] = Field(min_length=1)
+
+
+class FillerReserveEnqueueBatchRequest(BaseModel):
+    ids: list[str] = Field(min_length=1)
+
+
+class FillerReserveBatchLineError(BaseModel):
+    line: int = Field(ge=1)
+    detail: str
+
+
+class FillerReserveBatchValidation(BaseModel):
+    add_count: int = Field(ge=0)
+    skipped_in_reserve: int = Field(ge=0)
+    skipped_in_queue: int = Field(ge=0)
+    skipped_unresolvable: int = Field(ge=0)
+    skipped_capacity: int = Field(ge=0)
+    can_confirm: bool
+    errors: list[FillerReserveBatchLineError]
+
+
+class FillerReservePlaylistRequest(BaseModel):
+    youtube_playlist_url: str = Field(min_length=1, max_length=500)
+
+
+# Backward-compatible aliases (deprecated)
+FillerReserveImportLineError = FillerReserveBatchLineError
+FillerReserveImportValidation = FillerReserveBatchValidation
 
 
 class RejectBody(BaseModel):

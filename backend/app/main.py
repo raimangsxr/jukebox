@@ -14,6 +14,7 @@ from .routers import (
     auth_google,
     display,
     event_config,
+    filler_reserve,
     health,
     participant,
     queue,
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(display.router)
     app.include_router(event_config.router)
     app.include_router(queue.router)
+    app.include_router(filler_reserve.router)
     app.include_router(participant.router)
     app.include_router(votes.router)
     app.include_router(youtube.router)

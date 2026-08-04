@@ -120,7 +120,7 @@ changes:
 
   - id: 016-participant-limits-ux
     path: specs/changes/016-participant-limits-ux/
-    status: in_progress
+    status: implemented
     modifies:
       - backend-api
       - app-core
@@ -130,7 +130,38 @@ changes:
       layout, participant rules screen after login, ENV-configurable search/vote
       limits (10-minute windows).
 
+  - id: 017-admin-queue-history-filler
+    path: specs/017-admin-queue-history-filler/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Admin queue history with re-queue, filler song reserve (CRUD, reorder,
+      manual enqueue), operator direct enqueue, priority tie-break ordering,
+      and auto-inject from reserve when idle.
+
+  - id: 018-filler-reserve-csv
+    path: specs/018-filler-reserve-csv/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      CSV export/import for filler reserve (validate → confirm → atomic replace);
+      canonical watch URLs on export; line-oriented import with preview.
+
+  - id: 019-filler-reserve-playlist
+    path: specs/019-filler-reserve-playlist/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Filler reserve playlist import, CSV append (not replace), Vaciar clear;
+      shared batch preview with skip counts; single-video URL as 1-item batch.
+
 active:
-  change: 016-participant-limits-ux
+  change: null
   contract: specs/contracts/backend-api/contract.md
-  context_pack: specs/changes/016-participant-limits-ux/context-pack.md
+  context_pack: null

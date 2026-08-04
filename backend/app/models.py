@@ -16,7 +16,9 @@ EVENT_CONFIG_DEFAULT_APP_HEIGHT_PX = 720
 EVENT_CONFIG_DEFAULT_THEME = "dark"
 EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT = 8
 EVENT_CONFIG_DEFAULT_QUEUE_MODE = "moderated"
+EVENT_CONFIG_DEFAULT_FILLER_AUTO_INJECT = True
 MAX_QUEUED_ENTRIES = 100
+MAX_FILLER_RESERVE_ENTRIES = 50
 
 
 class QueueMode(str, Enum):
@@ -30,6 +32,19 @@ class QueueEntryStatus(str, Enum):
     queued = "queued"
     playing = "playing"
     played = "played"
+
+
+class QueueEntryPriority(str, Enum):
+    normal = "normal"
+    low = "low"
+
+
+class QueueEntrySource(str, Enum):
+    participant = "participant"
+    operator_filler = "operator_filler"
+    operator_direct = "operator_direct"
+    auto_inject = "auto_inject"
+    operator_requeue = "operator_requeue"
 
 
 class User(Base):
@@ -93,6 +108,9 @@ class EventConfig(Base):
     queue_mode: Mapped[str] = mapped_column(
         String(16), nullable=False, default=EVENT_CONFIG_DEFAULT_QUEUE_MODE
     )
+    filler_auto_inject_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=EVENT_CONFIG_DEFAULT_FILLER_AUTO_INJECT
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -136,6 +154,35 @@ class QueueEntry(Base):
     )
     approved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    priority: Mapped[str] = mapped_column(
+        String(16), nullable=False, default=QueueEntryPriority.normal.value
+    )
+    source: Mapped[str] = mapped_column(
+        String(24), nullable=False, default=QueueEntrySource.participant.value
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class FillerReserveEntry(Base):
+    __tablename__ = "filler_reserve_entries"
+    __table_args__ = (
+        UniqueConstraint("youtube_video_id", name="uq_filler_reserve_video"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    youtube_video_id: Mapped[str] = mapped_column(String(11), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    duration_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_query: Mapped[str] = mapped_column(String(500), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

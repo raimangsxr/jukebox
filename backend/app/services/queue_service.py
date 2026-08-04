@@ -10,13 +10,17 @@ from ..models import (
     EVENT_CONFIG_SINGLETON_ID,
     MAX_QUEUED_ENTRIES,
     EventConfig,
+    FillerReserveEntry,
     Participant,
     QueueEntry,
+    QueueEntryPriority,
+    QueueEntrySource,
     QueueEntryStatus,
     QueueMode,
 )
-from ..schemas import PendingQueueEntryRead, QueueEntryRead, StateResponse
+from ..schemas import HistoryListResponse, HistoryQueueEntryRead, PendingQueueEntryRead, QueueEntryRead, StateResponse
 from .notification_service import emit_song_approved, emit_song_up_next
+from .queue_ordering import queued_order_columns
 from .state_service import build_state_response, bump_revision, get_now_playing, get_or_create_runtime
 from .youtube_meta import (
     fetch_youtube_duration_sec,
@@ -29,6 +33,8 @@ ACTIVE_DUPLICATE_STATUSES = (
     QueueEntryStatus.queued,
     QueueEntryStatus.playing,
 )
+
+TERMINAL_STATUSES = (QueueEntryStatus.played, QueueEntryStatus.rejected)
 
 
 def get_queue_mode(db: Session) -> QueueMode:
@@ -52,7 +58,9 @@ def _count_queued(db: Session) -> int:
     )
 
 
-def _has_active_duplicate(db: Session, youtube_video_id: str, exclude_id: str | None = None) -> bool:
+def _has_active_duplicate(
+    db: Session, youtube_video_id: str, exclude_id: str | None = None
+) -> bool:
     stmt = select(QueueEntry.id).where(
         QueueEntry.youtube_video_id == youtube_video_id,
         QueueEntry.status.in_(ACTIVE_DUPLICATE_STATUSES),
@@ -60,6 +68,48 @@ def _has_active_duplicate(db: Session, youtube_video_id: str, exclude_id: str | 
     if exclude_id:
         stmt = stmt.where(QueueEntry.id != exclude_id)
     return db.execute(stmt).first() is not None
+
+
+def _has_video_conflict(db: Session, youtube_video_id: str, exclude_id: str | None = None) -> bool:
+    if _has_active_duplicate(db, youtube_video_id, exclude_id=exclude_id):
+        return True
+    reserve = db.execute(
+        select(FillerReserveEntry.id).where(
+            FillerReserveEntry.youtube_video_id == youtube_video_id
+        )
+    ).first()
+    return reserve is not None
+
+
+def _resolve_youtube_entry_fields(
+    db: Session,
+    youtube_url_or_id: str,
+    search_query: str | None = None,
+) -> tuple[str, str, str | None, int | None, str]:
+    video_id = parse_youtube_video_id(youtube_url_or_id)
+    if not video_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid youtube reference",
+        )
+    try:
+        title, thumbnail = fetch_youtube_metadata_strict(video_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid youtube reference",
+        ) from None
+    if search_query and search_query.strip():
+        original_query = f"search:{search_query.strip()}"
+    else:
+        original_query = youtube_url_or_id.strip()
+    return (
+        video_id,
+        title,
+        thumbnail,
+        fetch_youtube_duration_sec(video_id, db),
+        original_query,
+    )
 
 
 def _next_position(db: Session) -> int:
@@ -75,7 +125,7 @@ def _top_queued(db: Session) -> QueueEntry | None:
     return db.execute(
         select(QueueEntry)
         .where(QueueEntry.status == QueueEntryStatus.queued)
-        .order_by(QueueEntry.vote_count.desc(), QueueEntry.created_at.asc())
+        .order_by(*queued_order_columns())
         .limit(1)
     ).scalar_one_or_none()
 
@@ -84,11 +134,20 @@ def _recompute_positions(db: Session) -> None:
     entries = db.execute(
         select(QueueEntry)
         .where(QueueEntry.status == QueueEntryStatus.queued)
-        .order_by(QueueEntry.vote_count.desc(), QueueEntry.created_at.asc())
+        .order_by(*queued_order_columns())
     ).scalars().all()
     for index, entry in enumerate(entries, start=1):
         entry.position = index
     db.commit()
+
+
+def _participant_display_names(db: Session, participant_ids: set[str]) -> dict[str, str]:
+    if not participant_ids:
+        return {}
+    participants = db.execute(
+        select(Participant).where(Participant.id.in_(participant_ids))
+    ).scalars().all()
+    return {participant.id: participant.display_name for participant in participants}
 
 
 def list_pending(db: Session) -> list[QueueEntry]:
@@ -111,12 +170,7 @@ def list_pending_for_moderation(db: Session) -> list[PendingQueueEntryRead]:
         for entry in entries
         if entry.submitted_by_participant_id
     }
-    names_by_id: dict[str, str] = {}
-    if participant_ids:
-        participants = db.execute(
-            select(Participant).where(Participant.id.in_(participant_ids))
-        ).scalars().all()
-        names_by_id = {participant.id: participant.display_name for participant in participants}
+    names_by_id = _participant_display_names(db, participant_ids)
 
     return [
         PendingQueueEntryRead(
@@ -131,36 +185,156 @@ def list_pending_for_moderation(db: Session) -> list[PendingQueueEntryRead]:
     ]
 
 
-def create_pending_entry(db: Session, youtube_url_or_id: str) -> QueueEntry:
-    video_id = parse_youtube_video_id(youtube_url_or_id)
-    if not video_id:
+def list_history(
+    db: Session,
+    *,
+    status_filter: str | None = None,
+    page: int = 1,
+    page_size: int = 25,
+) -> HistoryListResponse:
+    page_size = min(max(page_size, 1), 100)
+    page = max(page, 1)
+
+    filters = [QueueEntry.status.in_(TERMINAL_STATUSES)]
+    if status_filter == QueueEntryStatus.played.value:
+        filters = [QueueEntry.status == QueueEntryStatus.played]
+    elif status_filter == QueueEntryStatus.rejected.value:
+        filters = [QueueEntry.status == QueueEntryStatus.rejected]
+
+    total = db.execute(
+        select(func.count()).select_from(QueueEntry).where(*filters)
+    ).scalar_one()
+    entries = list(
+        db.execute(
+            select(QueueEntry)
+            .where(*filters)
+            .order_by(QueueEntry.finished_at.desc(), QueueEntry.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).scalars().all()
+    )
+
+    participant_ids = {
+        entry.submitted_by_participant_id
+        for entry in entries
+        if entry.submitted_by_participant_id
+    }
+    names_by_id = _participant_display_names(db, participant_ids)
+
+    return HistoryListResponse(
+        entries=[
+            HistoryQueueEntryRead(
+                **QueueEntryRead.model_validate(entry).model_dump(),
+                finished_at=entry.finished_at or entry.created_at,
+                submitted_by_display_name=(
+                    names_by_id.get(entry.submitted_by_participant_id)
+                    if entry.submitted_by_participant_id
+                    else None
+                ),
+                source=entry.source,
+            )
+            for entry in entries
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+def requeue_from_history(db: Session, entry_id: str) -> QueueEntry:
+    entry = db.get(QueueEntry, entry_id)
+    if entry is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="invalid youtube reference",
+            status_code=status.HTTP_404_NOT_FOUND, detail="queue entry not found"
         )
-    if _has_active_duplicate(db, video_id):
+    if entry.status not in TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="invalid status transition",
+        )
+    if _has_video_conflict(db, entry.youtube_video_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="video already in queue",
         )
-    # Same strict metadata validation as the participant submit path so both
-    # reject invalid references consistently (010-hardening-and-polish, FR-013).
-    try:
-        title, thumbnail = fetch_youtube_metadata_strict(video_id)
-    except ValueError:
+
+    priority = (
+        QueueEntryPriority.normal.value
+        if entry.submitted_by_participant_id
+        else QueueEntryPriority.low.value
+    )
+    new_entry = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id=entry.youtube_video_id,
+        title=entry.title,
+        thumbnail_url=entry.thumbnail_url,
+        duration_sec=entry.duration_sec,
+        status=QueueEntryStatus.pending_review,
+        original_query=entry.original_query,
+        vote_count=0,
+        submitted_by_participant_id=entry.submitted_by_participant_id,
+        priority=priority,
+        source=QueueEntrySource.operator_requeue.value,
+    )
+    db.add(new_entry)
+    db.flush()
+    _enqueue_entry(db, new_entry)
+    bump_revision(db)
+    return new_entry
+
+
+def create_operator_queued_entry(
+    db: Session,
+    youtube_url_or_id: str,
+    search_query: str | None = None,
+) -> QueueEntry:
+    video_id, title, thumbnail, duration_sec, original_query = _resolve_youtube_entry_fields(
+        db, youtube_url_or_id, search_query
+    )
+    if _has_video_conflict(db, video_id):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="invalid youtube reference",
-        ) from None
+            status_code=status.HTTP_409_CONFLICT,
+            detail="video already in queue",
+        )
     entry = QueueEntry(
         id=str(uuid4()),
         youtube_video_id=video_id,
         title=title,
         thumbnail_url=thumbnail,
-        duration_sec=fetch_youtube_duration_sec(video_id, db),
+        duration_sec=duration_sec,
         status=QueueEntryStatus.pending_review,
-        original_query=youtube_url_or_id.strip(),
+        original_query=original_query,
         vote_count=0,
+        priority=QueueEntryPriority.low.value,
+        source=QueueEntrySource.operator_direct.value,
+    )
+    db.add(entry)
+    db.flush()
+    _enqueue_entry(db, entry)
+    bump_revision(db)
+    return entry
+
+
+def create_pending_entry(db: Session, youtube_url_or_id: str) -> QueueEntry:
+    video_id, title, thumbnail, duration_sec, original_query = _resolve_youtube_entry_fields(
+        db, youtube_url_or_id, None
+    )
+    if _has_video_conflict(db, video_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="video already in queue",
+        )
+    entry = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id=video_id,
+        title=title,
+        thumbnail_url=thumbnail,
+        duration_sec=duration_sec,
+        status=QueueEntryStatus.pending_review,
+        original_query=original_query,
+        vote_count=0,
+        priority=QueueEntryPriority.normal.value,
+        source=QueueEntrySource.participant.value,
     )
     db.add(entry)
     db.commit()
@@ -223,6 +397,11 @@ def _maybe_auto_start_playback(db: Session) -> None:
         return
     next_entry = _top_queued(db)
     if next_entry is None:
+        from .filler_reserve_service import inject_next_if_idle
+
+        inject_next_if_idle(db)
+        next_entry = _top_queued(db)
+    if next_entry is None:
         return
     runtime = get_or_create_runtime(db)
     emit_song_up_next(next_entry)
@@ -239,12 +418,9 @@ def submit_as_participant(
     youtube_url_or_id: str,
     search_query: str | None = None,
 ) -> QueueEntry:
-    video_id = parse_youtube_video_id(youtube_url_or_id)
-    if not video_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="invalid youtube reference",
-        )
+    video_id, title, thumbnail, duration_sec, original_query = _resolve_youtube_entry_fields(
+        db, youtube_url_or_id, search_query
+    )
 
     mode = get_queue_mode(db)
     max_submissions = get_settings().max_pending_submissions_per_participant
@@ -264,35 +440,24 @@ def submit_as_participant(
                 detail="pending submission limit reached",
             )
 
-    if _has_active_duplicate(db, video_id):
+    if _has_video_conflict(db, video_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="video already in queue",
         )
-
-    try:
-        title, thumbnail = fetch_youtube_metadata_strict(video_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="invalid youtube reference",
-        ) from None
-
-    if search_query and search_query.strip():
-        original_query = f"search:{search_query.strip()}"
-    else:
-        original_query = youtube_url_or_id.strip()
 
     entry = QueueEntry(
         id=str(uuid4()),
         youtube_video_id=video_id,
         title=title,
         thumbnail_url=thumbnail,
-        duration_sec=fetch_youtube_duration_sec(video_id, db),
+        duration_sec=duration_sec,
         status=QueueEntryStatus.pending_review,
         original_query=original_query,
         vote_count=0,
         submitted_by_participant_id=participant_id,
+        priority=QueueEntryPriority.normal.value,
+        source=QueueEntrySource.participant.value,
     )
     db.add(entry)
     db.flush()
@@ -347,6 +512,10 @@ def approve_entry(db: Session, entry_id: str) -> QueueEntry:
             status_code=status.HTTP_409_CONFLICT,
             detail="invalid status transition",
         )
+    if not entry.priority:
+        entry.priority = QueueEntryPriority.normal.value
+    if not entry.source:
+        entry.source = QueueEntrySource.participant.value
     entry = _enqueue_entry(db, entry)
     bump_revision(db)
     return entry
@@ -363,6 +532,7 @@ def reject_entry(db: Session, entry_id: str, reason: str | None) -> QueueEntry:
         )
     entry.status = QueueEntryStatus.rejected
     entry.rejection_reason = reason[:200] if reason else None
+    entry.finished_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(entry)
     bump_revision(db)
@@ -370,15 +540,21 @@ def reject_entry(db: Session, entry_id: str, reason: str | None) -> QueueEntry:
 
 
 def skip_or_advance(db: Session) -> StateResponse:
+    from .filler_reserve_service import inject_next_if_idle
+
     runtime = get_or_create_runtime(db)
     current = get_now_playing(db)
     if current is not None:
         current.status = QueueEntryStatus.played
         current.position = None
+        current.finished_at = datetime.now(timezone.utc)
         runtime.now_playing_entry_id = None
         db.commit()
 
         next_entry = _top_queued(db)
+        if next_entry is None:
+            inject_next_if_idle(db)
+            next_entry = _top_queued(db)
         if next_entry is not None:
             emit_song_up_next(next_entry)
             next_entry.status = QueueEntryStatus.playing
@@ -390,6 +566,9 @@ def skip_or_advance(db: Session) -> StateResponse:
         return build_state_response(db)
 
     next_entry = _top_queued(db)
+    if next_entry is None:
+        inject_next_if_idle(db)
+        next_entry = _top_queued(db)
     if next_entry is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

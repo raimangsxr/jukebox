@@ -17,6 +17,8 @@ YOUTUBE_URL_PATTERNS = [
 
 
 YOUTUBE_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
+YOUTUBE_PLAYLIST_ITEMS_URL = "https://www.googleapis.com/youtube/v3/playlistItems"
+MAX_PLAYLIST_PROCESSING_ITEMS = 500
 QUOTA_ERROR_REASONS = frozenset(
     {"quotaExceeded", "dailyLimitExceeded", "userRateLimitExceeded"}
 )
@@ -93,6 +95,174 @@ def fetch_youtube_duration_sec(video_id: str, db: Session | None = None) -> int 
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError):
             return None
     return None
+
+
+def fetch_youtube_videos_details_batch(
+    video_ids: list[str], db: Session | None = None
+) -> dict[str, tuple[str, str | None, int | None]]:
+    """Return title, thumbnail, duration per video id. Omitted ids were not found."""
+    if not video_ids:
+        return {}
+
+    unique_ids = list(dict.fromkeys(video_ids))
+    details: dict[str, tuple[str, str | None, int | None]] = {}
+
+    if get_settings().youtube_api_keys.strip():
+        pool = get_youtube_api_key_pool()
+        keys = [key.strip() for key in get_settings().youtube_api_keys.split(",") if key.strip()]
+        attempts = 0
+        while attempts < len(keys):
+            api_key = pool.acquire_key(db=db)
+            if api_key is None:
+                break
+            attempts += 1
+            if db is not None:
+                record_attempt(db, api_key)
+            try:
+                params = urllib.parse.urlencode(
+                    {
+                        "part": "snippet,contentDetails",
+                        "id": ",".join(unique_ids),
+                        "key": api_key,
+                    }
+                )
+                url = f"{YOUTUBE_VIDEOS_URL}?{params}"
+                with urllib.request.urlopen(url, timeout=10) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                for item in payload.get("items") or []:
+                    video_id = item.get("id")
+                    snippet = item.get("snippet") or {}
+                    title = snippet.get("title")
+                    if not isinstance(video_id, str) or not isinstance(title, str) or not title.strip():
+                        continue
+                    thumbnails = snippet.get("thumbnails") or {}
+                    thumb = None
+                    for key in ("maxres", "high", "medium", "default"):
+                        candidate = thumbnails.get(key, {}).get("url")
+                        if isinstance(candidate, str):
+                            thumb = candidate
+                            break
+                    duration_raw = item.get("contentDetails", {}).get("duration")
+                    duration = (
+                        parse_iso8601_duration(duration_raw)
+                        if isinstance(duration_raw, str)
+                        else None
+                    )
+                    details[video_id] = (title.strip(), thumb, duration)
+                return details
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                if exc.code == 403 and _parse_quota_error(body):
+                    if db is not None:
+                        mark_google_exhausted(db, api_key)
+                    pool.mark_exhausted(api_key)
+                    continue
+                break
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError):
+                break
+
+    for video_id in unique_ids:
+        if video_id in details:
+            continue
+        try:
+            title, thumbnail = fetch_youtube_metadata_strict(video_id)
+        except ValueError:
+            continue
+        details[video_id] = (
+            title,
+            thumbnail,
+            fetch_youtube_duration_sec(video_id, db),
+        )
+    return details
+
+
+def parse_youtube_playlist_id(value: str) -> str | None:
+    text = value.strip()
+    if not text:
+        return None
+    parsed = urllib.parse.urlparse(text)
+    query = urllib.parse.parse_qs(parsed.query)
+    list_values = query.get("list")
+    if list_values and list_values[0].strip():
+        return list_values[0].strip()
+    return None
+
+
+def fetch_playlist_video_ids(playlist_id: str, db: Session | None = None) -> list[str]:
+    if not get_settings().youtube_api_keys.strip():
+        raise ValueError("playlist unavailable")
+
+    pool = get_youtube_api_key_pool()
+    keys = [key.strip() for key in get_settings().youtube_api_keys.split(",") if key.strip()]
+    video_ids: list[str] = []
+    page_token: str | None = None
+
+    while True:
+        fetched_page = False
+        attempts = 0
+        while attempts < len(keys):
+            api_key = pool.acquire_key(db=db)
+            if api_key is None:
+                break
+            attempts += 1
+            if db is not None:
+                record_attempt(db, api_key)
+            try:
+                params: dict[str, str] = {
+                    "part": "contentDetails",
+                    "playlistId": playlist_id,
+                    "maxResults": "50",
+                    "key": api_key,
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                url = f"{YOUTUBE_PLAYLIST_ITEMS_URL}?{urllib.parse.urlencode(params)}"
+                with urllib.request.urlopen(url, timeout=15) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                for item in payload.get("items") or []:
+                    video_id = item.get("contentDetails", {}).get("videoId")
+                    if isinstance(video_id, str) and video_id:
+                        video_ids.append(video_id)
+                        if len(video_ids) > MAX_PLAYLIST_PROCESSING_ITEMS:
+                            raise ValueError("playlist too large")
+                page_token = payload.get("nextPageToken")
+                fetched_page = True
+                break
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                if exc.code == 403 and _parse_quota_error(body):
+                    if db is not None:
+                        mark_google_exhausted(db, api_key)
+                    pool.mark_exhausted(api_key)
+                    continue
+                raise ValueError("playlist unavailable") from exc
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError):
+                raise ValueError("playlist unavailable") from None
+
+        if not fetched_page:
+            raise ValueError("playlist unavailable")
+        if not page_token:
+            break
+
+    return video_ids
+
+
+def resolve_playlist_or_video_ids(
+    url: str, db: Session | None = None
+) -> list[tuple[int, str, str]]:
+    """Return (1-based index, video_id, original_query) in playlist order."""
+    playlist_id = parse_youtube_playlist_id(url)
+    if playlist_id:
+        video_ids = fetch_playlist_video_ids(playlist_id, db)
+        if not video_ids:
+            raise ValueError("playlist empty")
+        return [(index, video_id, url) for index, video_id in enumerate(video_ids, start=1)]
+
+    video_id = parse_youtube_video_id(url)
+    if video_id:
+        return [(1, video_id, url)]
+
+    raise ValueError("playlist unavailable")
 
 
 def parse_youtube_video_id(value: str) -> str | None:

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import EVENT_CONFIG_SINGLETON_ID, EventConfig, QueueMode
-from ..schemas import EventConfigRead, EventConfigUpdate, QueueModeUpdate
+from ..schemas import EventConfigRead, EventConfigUpdate, FillerAutoInjectUpdate, QueueModeUpdate
 from ..security import CurrentUser
 from ..services.state_service import bump_revision
 
@@ -57,6 +57,20 @@ def update_event_config(
     return EventConfigRead.model_validate(config)
 
 
+@router.put("/filler-auto-inject", response_model=EventConfigRead)
+def update_filler_auto_inject(
+    payload: FillerAutoInjectUpdate,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> EventConfigRead:
+    config = _get_config(db)
+    config.filler_auto_inject_enabled = payload.filler_auto_inject_enabled
+    db.commit()
+    db.refresh(config)
+    bump_revision(db)
+    return EventConfigRead.model_validate(config)
+
+
 @router.put("/queue-mode", response_model=EventConfigRead)
 def update_queue_mode(
     payload: QueueModeUpdate,
@@ -74,3 +88,4 @@ def update_queue_mode(
     db.refresh(config)
     bump_revision(db)
     return EventConfigRead.model_validate(config)
+

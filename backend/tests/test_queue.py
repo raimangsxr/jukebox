@@ -62,13 +62,23 @@ def test_approve_while_playing_only_queues(authed_client, pending_entry, playing
     assert state["now_playing"]["id"] == playing_entry.id
 
 
-def test_reject_pending(authed_client, pending_entry):
+def test_reject_pending(authed_client, pending_entry, db_session):
     response = authed_client.post(
         f"/api/queue/{pending_entry.id}/reject",
         json={"reason": "No encaja con el evento"},
     )
     assert response.status_code == 200
     assert response.json()["status"] == "rejected"
+    db_session.refresh(pending_entry)
+    assert pending_entry.finished_at is not None
+
+
+def test_skip_sets_finished_at(authed_client, playing_entry, db_session):
+    response = authed_client.post("/api/queue/skip")
+    assert response.status_code == 200
+    db_session.refresh(playing_entry)
+    assert playing_entry.status == QueueEntryStatus.played
+    assert playing_entry.finished_at is not None
 
 
 def test_idle_start_via_skip(authed_client, queued_entry):
