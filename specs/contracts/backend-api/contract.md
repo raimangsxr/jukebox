@@ -417,9 +417,29 @@ Participant → **401** on all three endpoints.
 
 Participant → **401**.
 
-### Auto-inject
+### Auto-inject (changed 020)
 
-When `filler_auto_inject_enabled` and no `playing`/`queued` entries: transfer reserve position 1 to queue (`source=auto_inject`), auto-start per 014. Toggle: `PUT /api/event-config/filler-auto-inject`.
+When `filler_auto_inject_enabled` and **zero** `queued` entries (regardless of whether `playing` exists):
+
+1. Evaluate reserve in position order.
+2. If candidate `youtube_video_id` is in active queue (`pending_review`, `queued`, `playing`) → **remove** that reserve row (no enqueue), continue with next position.
+3. Otherwise transfer first valid candidate to queue as `queued`, `priority=low`, `source=auto_inject` (consume from reserve).
+4. At most **one** successful inject per evaluation call.
+5. Single `bump_revision` + SSE `state` per evaluation when reserve or queue changed (including duplicate-only removals with no inject).
+
+**Idle path** (no `playing`, no `queued`): inject then auto-start top `queued` per 014 (`_maybe_auto_start_playback` / `skip_or_advance`).
+
+**Playing + empty queued**: inject only; do **not** interrupt `now_playing`.
+
+**Triggers** (explicit mutations only; state GET does not inject):
+
+- Queue lifecycle: `skip_or_advance`, `_maybe_auto_start_playback` when promotion leaves `playing` + 0 `queued`
+- Reserve mutations (that do not enqueue): `add_to_reserve`, import/playlist commit, `reorder_reserve` (after persist)
+- Config: `filler_auto_inject_enabled` set to `true` when previously `false`
+
+**Not triggers**: `GET /api/state`; `reject_entry` (only `pending_review`); `transfer_to_queue` / manual reserve enqueue (adds to `queued` directly).
+
+Toggle: `PUT /api/event-config/filler-auto-inject`.
 
 ### YouTube search (changed)
 
@@ -506,3 +526,4 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - **017-admin-queue-history-filler** — queue history + requeue; filler reserve CRUD/reorder/enqueue; operator direct enqueue; priority tie-break ordering; auto-inject on idle; Alembic 0010; `GET/POST /api/queue/history/*`, `/api/filler-reserve/*`, `POST /api/queue/operator-submit`, `PUT /api/event-config/filler-auto-inject`
 - **018-filler-reserve-csv** — filler reserve CSV export/import (validate → confirm → atomic replace); `GET /api/filler-reserve/export`, `POST /api/filler-reserve/import/validate`, `POST /api/filler-reserve/import`; no migration
 - **019-filler-reserve-playlist** — CSV import append (not replace); playlist validate/commit; `DELETE /api/filler-reserve` clear; `FillerReserveBatchValidation` with `skipped_*` counts; no migration
+- **020-fill-queue-from-reserve** — auto-inject when `queued` empty even while `playing`; skip/remove active duplicates from reserve; event-driven triggers including toggle-on; no migration

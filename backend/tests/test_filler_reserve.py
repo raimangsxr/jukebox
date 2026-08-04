@@ -245,6 +245,137 @@ def test_auto_inject_empty_reserve_noop(authed_client, playing_entry):
     assert response.json()["now_playing"] is None
 
 
+def test_inject_while_playing_empty_queued(
+    authed_client, db_session, playing_entry, monkeypatch, sample_video_id
+):
+    _mock_metadata(monkeypatch)
+    playing_id = playing_entry.id
+
+    response = authed_client.post(
+        "/api/filler-reserve",
+        json={"youtube_url_or_id": sample_video_id},
+    )
+    assert response.status_code == 201
+
+    state = authed_client.get("/api/state").json()
+    assert state["now_playing"]["id"] == playing_id
+    assert len(state["queue"]) == 1
+    assert state["queue"][0]["youtube_video_id"] == sample_video_id
+    db_session.expire_all()
+    queued = db_session.get(QueueEntry, state["queue"][0]["id"])
+    assert queued.source == QueueEntrySource.auto_inject.value
+
+
+def test_inject_skips_duplicate_removes_reserve(
+    authed_client, db_session, playing_entry, monkeypatch
+):
+    from sqlalchemy import select
+
+    _mock_metadata(monkeypatch)
+    playing_video = playing_entry.youtube_video_id
+    _add_reserve(db_session, playing_video, 1)
+    _add_reserve(db_session, "kJQP7kiw5Fk", 2)
+    before_revision = get_or_create_runtime(db_session).revision
+
+    reserve_entries = list(
+        db_session.execute(
+            select(FillerReserveEntry).order_by(FillerReserveEntry.position.asc())
+        ).scalars().all()
+    )
+    response = authed_client.put(
+        "/api/filler-reserve/reorder",
+        json={"ordered_ids": [entry.id for entry in reserve_entries]},
+    )
+    assert response.status_code == 200
+
+    reserve = authed_client.get("/api/filler-reserve").json()["entries"]
+    assert len(reserve) == 0
+    assert len([e for e in reserve if e["youtube_video_id"] == playing_video]) == 0
+
+    state = authed_client.get("/api/state").json()
+    assert len(state["queue"]) == 1
+    assert state["queue"][0]["youtube_video_id"] == "kJQP7kiw5Fk"
+    assert get_or_create_runtime(db_session).revision > before_revision
+
+
+def test_inject_disabled_while_playing(
+    authed_client, db_session, playing_entry, monkeypatch, sample_video_id
+):
+    _mock_metadata(monkeypatch)
+    config = db_session.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    config.filler_auto_inject_enabled = False
+    db_session.commit()
+
+    response = authed_client.post(
+        "/api/filler-reserve",
+        json={"youtube_url_or_id": sample_video_id},
+    )
+    assert response.status_code == 201
+
+    state = authed_client.get("/api/state").json()
+    assert state["queue"] == []
+
+
+def test_inject_on_toggle_enable(
+    authed_client, db_session, playing_entry, monkeypatch, sample_video_id
+):
+    _mock_metadata(monkeypatch)
+    config = db_session.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    config.filler_auto_inject_enabled = False
+    db_session.commit()
+    _add_reserve(db_session, sample_video_id, 1)
+
+    response = authed_client.put(
+        "/api/event-config/filler-auto-inject",
+        json={"filler_auto_inject_enabled": True},
+    )
+    assert response.status_code == 200
+
+    state = authed_client.get("/api/state").json()
+    assert len(state["queue"]) == 1
+    assert state["queue"][0]["youtube_video_id"] == sample_video_id
+    db_session.expire_all()
+    queued = db_session.get(QueueEntry, state["queue"][0]["id"])
+    assert queued.source == QueueEntrySource.auto_inject.value
+
+
+def test_get_state_does_not_inject(
+    authed_client, db_session, playing_entry, monkeypatch, sample_video_id
+):
+    _mock_metadata(monkeypatch)
+    _add_reserve(db_session, sample_video_id, 1)
+
+    for _ in range(3):
+        state = authed_client.get("/api/state").json()
+        assert state["queue"] == []
+
+    response = authed_client.post(
+        "/api/filler-reserve",
+        json={"youtube_url_or_id": "kJQP7kiw5Fk"},
+    )
+    assert response.status_code == 201
+    state = authed_client.get("/api/state").json()
+    assert len(state["queue"]) == 1
+
+
+def test_participant_state_shows_injected_filler(
+    authed_client,
+    dev_participant_client,
+    db_session,
+    playing_entry,
+    monkeypatch,
+    sample_video_id,
+):
+    _mock_metadata(monkeypatch)
+    authed_client.post(
+        "/api/filler-reserve",
+        json={"youtube_url_or_id": sample_video_id},
+    )
+
+    state = dev_participant_client.get("/api/participant/state").json()
+    assert any(item["youtube_video_id"] == sample_video_id for item in state["queue"])
+
+
 def test_source_audit_all_creation_paths(
     authed_client,
     dev_participant_client,

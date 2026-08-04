@@ -222,6 +222,7 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 ### Participar / kiosk
 
 - No historial or reserve UI; filler songs in queue are votable with no visual distinction; order from server SSE `state`
+- **020**: When backend auto-injects filler while a song is `playing`, kiosk queue strip and `/participar` queue list show the new `queued` entry on next SSE `state` merge (no UI changes)
 
 ## Change history
 
@@ -239,3 +240,4 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **017-admin-queue-history-filler** — admin Historial + Reserva de relleno sections, filler auto-inject toggle, queue-admin/filler-reserve services
 - **018-filler-reserve-csv** — Exportar CSV / Importar CSV on Reserva de relleno; import preview modal with line errors; `exportCsv`, `validateImport`, `importReserve` on `FillerReserveService`
 - **019-filler-reserve-playlist** — shared batch preview modal (`add_count`, `skipped_*`); CSV append; playlist URL + **Añadir playlist**; **Vaciar** with confirm; `validatePlaylist`, `addPlaylist`, `clearReserve` on `FillerReserveService`
+- **020-fill-queue-from-reserve** — backend auto-inject while `playing` surfaces filler in kiosk strip and participant queue via existing SSE (no frontend changes)

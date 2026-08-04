@@ -161,6 +161,16 @@ changes:
       Filler reserve playlist import, CSV append (not replace), Vaciar clear;
       shared batch preview with skip counts; single-video URL as 1-item batch.
 
+  - id: 020-fill-queue-from-reserve
+    path: specs/020-fill-queue-from-reserve/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Auto-inject filler when queued is empty even while playing; skip/remove
+      active duplicates from reserve; event-driven triggers including toggle-on.
+
 active:
   change: null
   contract: specs/contracts/backend-api/contract.md
