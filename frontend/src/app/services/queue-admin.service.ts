@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import {
+  HistoryListResponse,
   PendingListResponse,
   QueueEntryRead,
   StateResponse,
@@ -31,5 +32,29 @@ export class QueueAdminService {
 
   skipOrStart(): Observable<StateResponse> {
     return this.http.post<StateResponse>(`${this.baseUrl}/queue/skip`, {});
+  }
+
+  getHistory(params?: {
+    status?: 'played' | 'rejected';
+    page?: number;
+    page_size?: number;
+  }): Observable<HistoryListResponse> {
+    return this.http.get<HistoryListResponse>(`${this.baseUrl}/queue/history`, {
+      params: params as Record<string, string | number>,
+    });
+  }
+
+  requeue(historyEntryId: string): Observable<QueueEntryRead> {
+    return this.http.post<QueueEntryRead>(
+      `${this.baseUrl}/queue/history/${historyEntryId}/requeue`,
+      {}
+    );
+  }
+
+  operatorSubmit(youtubeUrlOrId: string, searchQuery?: string): Observable<QueueEntryRead> {
+    return this.http.post<QueueEntryRead>(`${this.baseUrl}/queue/operator-submit`, {
+      youtube_url_or_id: youtubeUrlOrId,
+      search_query: searchQuery ?? null,
+    });
   }
 }

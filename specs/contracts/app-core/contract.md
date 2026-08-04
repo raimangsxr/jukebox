@@ -210,6 +210,19 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **Entendido, participar** sets session flag and starts full participate UI + SSE
 - `votesRemainingLabel` uses dynamic `max_votes_10_minutes` (10-minute window)
 
+## Admin queue history and filler reserve (017)
+
+### Admin `/admin`
+
+- **Historial**: paginated played/rejected list with status filter; re-encolar with confirm; 409 handling
+- **Reserva de relleno**: ordered reserve list, add URL, reorder (↑↓), enqueue to active queue, delete, **Añadir directo a cola** (`operator-submit`), **Exportar CSV** / **Importar CSV** (validate → shared preview modal → confirm → append), **Añadir playlist** (URL input → validate → shared preview modal → confirm → append), **Vaciar** (confirm → `DELETE /api/filler-reserve`)
+- **Inyección automática** toggle bound to `PUT /api/event-config/filler-auto-inject`
+- Services: `QueueAdminService` (`getHistory`, `requeue`, `operatorSubmit`), `FillerReserveService`, `EventConfigService.updateFillerAutoInject`
+
+### Participar / kiosk
+
+- No historial or reserve UI; filler songs in queue are votable with no visual distinction; order from server SSE `state`
+
 ## Change history
 
 - **001-foundation-jukebox** — Angular scaffold, four routes, placeholder layouts
@@ -223,3 +236,6 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **010-hardening-and-polish** — editable Evento config + theme, responsive kiosk, per-row moderation, QR caching, 404 page, dead-dep removal, guard/interceptor/service tests
 - **013-queue-approval-mode** — queue mode selector in Moderación (Moderado/Libre), confirm before mode change, free-mode direct enqueue UX
 - **016-participant-limits-ux** — live connection badge, admin mobile moderation cards, participant rules screen, ENV-driven search/vote limits
+- **017-admin-queue-history-filler** — admin Historial + Reserva de relleno sections, filler auto-inject toggle, queue-admin/filler-reserve services
+- **018-filler-reserve-csv** — Exportar CSV / Importar CSV on Reserva de relleno; import preview modal with line errors; `exportCsv`, `validateImport`, `importReserve` on `FillerReserveService`
+- **019-filler-reserve-playlist** — shared batch preview modal (`add_count`, `skipped_*`); CSV append; playlist URL + **Añadir playlist**; **Vaciar** with confirm; `validatePlaylist`, `addPlaylist`, `clearReserve` on `FillerReserveService`

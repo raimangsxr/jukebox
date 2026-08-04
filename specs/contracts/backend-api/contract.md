@@ -309,6 +309,128 @@ Operates on the singleton `event_config` row (`name`, `subtitle`, `app_height_px
 
 Duplicate video rule unchanged (`409 video already in queue`). Queue full (`409 queue is full`) applies when enqueueing in free mode. Moderation approve/reject unchanged for legacy `pending_review` rows after mode switch.
 
+## Queue history and filler reserve (017)
+
+### Schema (Alembic 0010)
+
+`queue_entries`: `priority` (`normal`|`low`, default `normal`), `source` (`participant`|`operator_filler`|`operator_direct`|`auto_inject`|`operator_requeue`), `finished_at` (set on `played`/`rejected`).
+
+Table `filler_reserve_entries` (max 50, unique `youtube_video_id`). `event_config.filler_auto_inject_enabled` (default `true`).
+
+### Queue ordering (changed)
+
+`queued` order: `vote_count DESC`, `priority ASC` (`normal` before `low`), `created_at ASC`.
+
+### Duplicate video rule (extended)
+
+409 `video already in queue` when same `youtube_video_id` in active queue (`pending_review`, `queued`, `playing`) **or** `filler_reserve_entries`.
+
+### History
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| GET | `/api/queue/history` | operator | 200 `HistoryListResponse` |
+| POST | `/api/queue/history/{id}/requeue` | operator | 201 `QueueEntryRead` |
+
+Query: `status` (`played`|`rejected`), `page`, `page_size` (max 100). Requeue always creates `queued` (never `pending_review`); `source=operator_requeue`; priority `normal` if historical participant submit, else `low`. Participant → 401.
+
+### Operator direct enqueue
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| POST | `/api/queue/operator-submit` | operator | 201 `QueueEntryRead` |
+
+Body: `{ youtube_url_or_id, search_query? }`. Creates `queued`, `priority=low`, `source=operator_direct`.
+
+### Filler reserve
+
+| Method | Path | Auth |
+|--------|------|------|
+| GET/POST | `/api/filler-reserve` | operator |
+| DELETE | `/api/filler-reserve` | operator |
+| DELETE | `/api/filler-reserve/{id}` | operator |
+| PUT | `/api/filler-reserve/reorder` | operator |
+| POST | `/api/filler-reserve/{id}/enqueue` | operator |
+| POST | `/api/filler-reserve/enqueue-batch` | operator |
+
+Enqueue consumes reserve item(s); `priority=low`, `source=operator_filler`. `DELETE /api/filler-reserve` clears entire reserve (204, `bump_revision`). Participant → 401.
+
+### Filler reserve CSV export/import (018, changed 019)
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| GET | `/api/filler-reserve/export` | operator | 200 `text/csv` attachment |
+| POST | `/api/filler-reserve/import/validate` | operator | 200 `FillerReserveBatchValidation` |
+| POST | `/api/filler-reserve/import` | operator | 200 `FillerReserveListResponse` or 422 |
+
+**Export**: UTF-8 BOM; line 1 `url`; lines 2..N+1 canonical `https://www.youtube.com/watch?v={VIDEO_ID}` in position order; empty reserve = header only. `Content-Disposition: attachment; filename="filler-reserve-YYYY-MM-DD.csv"` (UTC date).
+
+**Import validate** (`multipart/form-data` field `file`): line-oriented parsing (one URL per non-empty line; skip header `url`); full validation without DB writes.
+
+**Import commit**: re-validates same file; **appends** validated entries to end of reserve (`position` continues after current max). Does not replace or clear reserve. Empty file or zero addable entries → `can_confirm: false`; commit returns **422**; reserve unchanged.
+
+**Response schema** — `FillerReserveBatchValidation`:
+
+| Field | Meaning |
+|-------|---------|
+| `add_count` | Entries that will be appended on confirm |
+| `skipped_in_reserve` | Duplicates already in reserve (omitted) |
+| `skipped_in_queue` | In active queue / pending review (omitted) |
+| `skipped_unresolvable` | Metadata unavailable (omitted) |
+| `skipped_capacity` | Excess over max 50 (omitted) |
+| `can_confirm` | `false` when blocking `errors` non-empty OR `add_count == 0` |
+| `errors` | Blocking only: `{ "line": int, "detail": string }` |
+
+**Validation** (both validate and commit):
+
+- Within-file duplicate `youtube_video_id` → blocking.
+- Invalid reference format → blocking.
+- Rows already in reserve → skip (not error).
+- Rows in active queue → skip (not error).
+- Unresolvable metadata → skip.
+- Append would exceed 50 total → skip excess in order.
+
+**Import `errors[].detail` codes**: `invalid youtube reference`, `duplicate in file`, `duplicate in batch`.
+
+Participant → **401** on all three endpoints.
+
+### Filler reserve playlist (019)
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| POST | `/api/filler-reserve/playlist/validate` | operator | 200 `FillerReserveBatchValidation` |
+| POST | `/api/filler-reserve/playlist` | operator | 200 `FillerReserveListResponse` or 422 |
+
+**Request body** (`application/json`): `{ "youtube_playlist_url": "https://www.youtube.com/playlist?list=PL..." }`
+
+**Accepted URL formats**: playlist URLs with `list=PL…`; single video URLs (`watch?v=`, `youtu.be/`, `shorts/`) without playlist → batch of 1 video.
+
+**Behavior**: parse playlist id (or single video); fetch ordered video ids via YouTube `playlistItems.list` (paginated, max 500 items); run same batch validation as CSV import (`line` = 1-based playlist index). Validate: no DB writes. Commit: re-validate → append addable entries.
+
+| Case | Status | Notes |
+|------|--------|-------|
+| Playlist unavailable | 422 | `detail: playlist unavailable` |
+| Playlist empty | 422 | `detail: playlist empty` |
+| Playlist >500 items | 422 | `detail: playlist too large` |
+| Zero addable after skips | 422 | `can_confirm: false`, `add_count: 0` |
+| Success commit | 200 | Full reserve list |
+
+Participant → **401**.
+
+### Auto-inject
+
+When `filler_auto_inject_enabled` and no `playing`/`queued` entries: transfer reserve position 1 to queue (`source=auto_inject`), auto-start per 014. Toggle: `PUT /api/event-config/filler-auto-inject`.
+
+### YouTube search (changed)
+
+`GET /api/youtube/search`: operator session bypasses participant rate limit.
+
+### Tests
+
+- `backend/tests/test_queue_history.py`
+- `backend/tests/test_filler_reserve.py`
+- Extended `test_queue.py`, `test_state.py`, `test_votes.py`
+
 ## Auth-token lookup (010)
 
 `api_tokens` has an indexed non-secret `token_prefix` (first 8 chars of the plaintext). Token exchange locates the candidate by prefix then verifies a single bcrypt hash (no full-table scan). Tokens created before 010 have a NULL prefix, no longer validate, and must be regenerated.
@@ -381,3 +503,6 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - **009-admin-api-key-usage** — per-key YouTube API daily usage tracking, `GET /api/youtube/api-keys/usage`, SSE `api_key_usage`
 - **010-hardening-and-polish** — server-side SSE audience routing; `GET`/`PUT /api/event-config`; token prefix lookup (Alembic 0007); submitter FK (Alembic 0008); rate-limiter eviction; deterministic quota reset-on-read; unified submit metadata validation; CORS `allow_headers` scoping; single-replica documentation
 - **013-queue-approval-mode** — `event_config.queue_mode` (Alembic 0009); `PUT /api/event-config/queue-mode`; free-mode direct enqueue + `song.approved` on submit; moderated regression unchanged
+- **017-admin-queue-history-filler** — queue history + requeue; filler reserve CRUD/reorder/enqueue; operator direct enqueue; priority tie-break ordering; auto-inject on idle; Alembic 0010; `GET/POST /api/queue/history/*`, `/api/filler-reserve/*`, `POST /api/queue/operator-submit`, `PUT /api/event-config/filler-auto-inject`
+- **018-filler-reserve-csv** — filler reserve CSV export/import (validate → confirm → atomic replace); `GET /api/filler-reserve/export`, `POST /api/filler-reserve/import/validate`, `POST /api/filler-reserve/import`; no migration
+- **019-filler-reserve-playlist** — CSV import append (not replace); playlist validate/commit; `DELETE /api/filler-reserve` clear; `FillerReserveBatchValidation` with `skipped_*` counts; no migration

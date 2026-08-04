@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
 from ..schemas import (
     DevSubmitRequest,
+    HistoryListResponse,
+    OperatorQueueSubmitRequest,
     PendingListResponse,
     QueueEntryRead,
     RejectBody,
@@ -16,6 +18,41 @@ from ..services import queue_service
 
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
+
+
+@router.get("/history", response_model=HistoryListResponse)
+def get_queue_history(
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+    status: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+) -> HistoryListResponse:
+    return queue_service.list_history(
+        db, status_filter=status, page=page, page_size=page_size
+    )
+
+
+@router.post("/history/{entry_id}/requeue", response_model=QueueEntryRead, status_code=201)
+def requeue_history_entry(
+    entry_id: str,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> QueueEntryRead:
+    entry = queue_service.requeue_from_history(db, entry_id)
+    return QueueEntryRead.model_validate(entry)
+
+
+@router.post("/operator-submit", response_model=QueueEntryRead, status_code=201)
+def operator_submit_to_queue(
+    body: OperatorQueueSubmitRequest,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> QueueEntryRead:
+    entry = queue_service.create_operator_queued_entry(
+        db, body.youtube_url_or_id, body.search_query
+    )
+    return QueueEntryRead.model_validate(entry)
 
 
 @router.get("/pending", response_model=PendingListResponse)

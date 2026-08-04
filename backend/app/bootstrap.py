@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from .models import (
     EVENT_CONFIG_DEFAULT_APP_HEIGHT_PX,
+    EVENT_CONFIG_DEFAULT_FILLER_AUTO_INJECT,
     EVENT_CONFIG_DEFAULT_NAME,
     EVENT_CONFIG_DEFAULT_QUEUE_MODE,
     EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT,
@@ -69,6 +70,7 @@ def ensure_event_config(db: Session) -> bool:
         theme=EVENT_CONFIG_DEFAULT_THEME,
         queue_visible_count=EVENT_CONFIG_DEFAULT_QUEUE_VISIBLE_COUNT,
         queue_mode=EVENT_CONFIG_DEFAULT_QUEUE_MODE,
+        filler_auto_inject_enabled=EVENT_CONFIG_DEFAULT_FILLER_AUTO_INJECT,
     )
     db.add(row)
     db.commit()

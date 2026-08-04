@@ -155,3 +155,95 @@ def test_google_participant_vote_regression(
     me = google_oauth_client.get("/api/participant/me").json()["participant"]
     row = db_session.get(Participant, me["id"])
     assert row.google_sub == google_profile["sub"]
+
+
+def test_priority_tie_break_normal_before_low(dev_participant_client, db_session):
+    from uuid import uuid4
+
+    from app.models import QueueEntry, QueueEntryPriority
+
+    normal = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="dQw4w9WgXcQ",
+        title="Participant",
+        status=QueueEntryStatus.queued,
+        original_query="dQw4w9WgXcQ",
+        vote_count=0,
+        position=2,
+        priority=QueueEntryPriority.normal.value,
+    )
+    low = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="jNQXAC9IVRw",
+        title="Filler",
+        status=QueueEntryStatus.queued,
+        original_query="jNQXAC9IVRw",
+        vote_count=0,
+        position=1,
+        priority=QueueEntryPriority.low.value,
+        source="operator_filler",
+    )
+    db_session.add_all([normal, low])
+    db_session.commit()
+
+    state = dev_participant_client.get("/api/participant/state").json()
+    assert state["queue"][0]["id"] == normal.id
+    assert state["queue"][1]["id"] == low.id
+
+
+def test_higher_vote_count_still_wins(dev_participant_client, db_session):
+    from uuid import uuid4
+
+    from app.models import QueueEntry, QueueEntryPriority
+
+    normal = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="dQw4w9WgXcQ",
+        title="Participant",
+        status=QueueEntryStatus.queued,
+        original_query="dQw4w9WgXcQ",
+        vote_count=1,
+        position=2,
+        priority=QueueEntryPriority.normal.value,
+    )
+    low = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="jNQXAC9IVRw",
+        title="Filler",
+        status=QueueEntryStatus.queued,
+        original_query="jNQXAC9IVRw",
+        vote_count=3,
+        position=1,
+        priority=QueueEntryPriority.low.value,
+        source="operator_filler",
+    )
+    db_session.add_all([normal, low])
+    db_session.commit()
+
+    state = dev_participant_client.get("/api/participant/state").json()
+    assert state["queue"][0]["id"] == low.id
+
+
+def test_filler_entry_votable(dev_participant_client, db_session):
+    from uuid import uuid4
+
+    from app.models import QueueEntry, QueueEntryPriority
+
+    filler = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="9bZkp7q19f0",
+        title="Filler",
+        status=QueueEntryStatus.queued,
+        original_query="9bZkp7q19f0",
+        vote_count=0,
+        position=1,
+        priority=QueueEntryPriority.low.value,
+        source="operator_filler",
+    )
+    db_session.add(filler)
+    db_session.commit()
+
+    response = _vote(dev_participant_client, filler.id)
+    assert response.status_code == 201
+    assert response.json()["state"]["queue"][0]["vote_count"] == 1
+

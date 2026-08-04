@@ -20,6 +20,7 @@ from ..schemas import (
     StateResponse,
 )
 from .sse_hub import broadcast_state
+from .queue_ordering import queued_order_columns
 
 
 def get_or_create_runtime(db: Session) -> JukeboxRuntime:
@@ -63,7 +64,7 @@ def get_queue_strip(db: Session) -> list[QueueEntry]:
     stmt = (
         select(QueueEntry)
         .where(QueueEntry.status == QueueEntryStatus.queued)
-        .order_by(QueueEntry.vote_count.desc(), QueueEntry.created_at.asc())
+        .order_by(*queued_order_columns())
         .limit(limit)
     )
     return list(db.execute(stmt).scalars().all())
@@ -73,7 +74,7 @@ def get_all_queued(db: Session) -> list[QueueEntry]:
     stmt = (
         select(QueueEntry)
         .where(QueueEntry.status == QueueEntryStatus.queued)
-        .order_by(QueueEntry.vote_count.desc(), QueueEntry.created_at.asc())
+        .order_by(*queued_order_columns())
     )
     return list(db.execute(stmt).scalars().all())
 

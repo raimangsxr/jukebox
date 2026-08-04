@@ -17,9 +17,14 @@ import { environment } from '../../environments/environment';
 import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
 import { EventConfigRead, QueueMode } from '../models/event-config';
 import { AuthService } from '../services/auth.service';
-import { PendingQueueEntryRead } from '../models/jukebox-state';
+import { HistoryQueueEntryRead, PendingQueueEntryRead } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
 import { EventConfigService } from '../services/event-config.service';
+import {
+  FillerReserveBatchValidation,
+  FillerReserveEntryRead,
+  FillerReserveService,
+} from '../services/filler-reserve.service';
 import { QueueAdminService } from '../services/queue-admin.service';
 import { PlaybackAudioMode } from '../models/playback-status';
 import { LiveStatusComponent } from '../components/live-status.component';
@@ -60,6 +65,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly queueAdmin = inject(QueueAdminService);
+  private readonly fillerReserve = inject(FillerReserveService);
   private readonly displayState = inject(DisplayStateService);
   private readonly eventConfigService = inject(EventConfigService);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -90,6 +96,31 @@ export class AdminComponent implements OnInit, OnDestroy {
   pendingQueueModeChange: QueueMode | null = null;
   playbackAudioMode: PlaybackAudioMode = 'idle';
   connectionStatus: LiveConnectionStatus = 'reconnecting';
+
+  historyEntries: HistoryQueueEntryRead[] = [];
+  historyTotal = 0;
+  historyPage = 1;
+  historyPageSize = 25;
+  historyStatusFilter: '' | 'played' | 'rejected' = '';
+  historyLoading = false;
+  historyError: string | null = null;
+  pendingRequeueId: string | null = null;
+  requeueBusy = false;
+
+  reserveEntries: FillerReserveEntryRead[] = [];
+  reserveLoading = false;
+  reserveError: string | null = null;
+  reserveInput = '';
+  reserveBusy = false;
+  fillerAutoInjectEnabled = true;
+  fillerAutoInjectSaving = false;
+  batchSource: 'csv' | 'playlist' | null = null;
+  importFile: File | null = null;
+  playlistUrl = '';
+  batchValidation: FillerReserveBatchValidation | null = null;
+  batchModalOpen = false;
+  batchBusy = false;
+
   private stateSubscription: Subscription | null = null;
   private apiKeyUsageSubscription: Subscription | null = null;
   private playbackStatusSubscription: Subscription | null = null;
@@ -98,6 +129,8 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.refreshTokens();
     this.refreshApiKeyUsage();
     this.loadEventConfig();
+    this.refreshHistory();
+    this.refreshReserve();
     void this.displayState.start();
     this.stateSubscription = this.displayState.state$.subscribe(() => {
       this.refreshPending();
@@ -299,6 +332,7 @@ export class AdminComponent implements OnInit, OnDestroy {
       next: config => {
         this.eventConfig = { ...config };
         this.queueMode = config.queue_mode;
+        this.fillerAutoInjectEnabled = config.filler_auto_inject_enabled;
         this.configLoading = false;
         this.cdr.markForCheck();
       },
@@ -374,6 +408,425 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   queueModeLabel(mode: QueueMode): string {
     return mode === 'free' ? 'Libre' : 'Moderado';
+  }
+
+  refreshHistory(): void {
+    this.historyLoading = true;
+    this.historyError = null;
+    const params: { page: number; page_size: number; status?: 'played' | 'rejected' } = {
+      page: this.historyPage,
+      page_size: this.historyPageSize,
+    };
+    if (this.historyStatusFilter) {
+      params.status = this.historyStatusFilter;
+    }
+    this.queueAdmin.getHistory(params).subscribe({
+      next: res => {
+        this.historyEntries = res.entries;
+        this.historyTotal = res.total;
+        this.historyLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.historyLoading = false;
+        this.historyError = 'No se pudo cargar el historial.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  onHistoryFilterChange(value: '' | 'played' | 'rejected'): void {
+    this.historyStatusFilter = value;
+    this.historyPage = 1;
+    this.refreshHistory();
+  }
+
+  historyPageCount(): number {
+    return Math.max(1, Math.ceil(this.historyTotal / this.historyPageSize));
+  }
+
+  goHistoryPage(page: number): void {
+    const max = this.historyPageCount();
+    if (page < 1 || page > max) {
+      return;
+    }
+    this.historyPage = page;
+    this.refreshHistory();
+  }
+
+  requestRequeue(entryId: string): void {
+    this.pendingRequeueId = entryId;
+    this.cdr.markForCheck();
+  }
+
+  cancelRequeue(): void {
+    this.pendingRequeueId = null;
+    this.cdr.markForCheck();
+  }
+
+  confirmRequeue(): void {
+    const entryId = this.pendingRequeueId;
+    if (!entryId || this.requeueBusy) {
+      return;
+    }
+    this.requeueBusy = true;
+    this.queueAdmin.requeue(entryId).subscribe({
+      next: () => {
+        this.requeueBusy = false;
+        this.pendingRequeueId = null;
+        this.refreshHistory();
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.requeueBusy = false;
+        this.historyError = this.mapQueueError(err);
+        this.pendingRequeueId = null;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  historyStatusLabel(status: string): string {
+    return status === 'played' ? 'Reproducida' : status === 'rejected' ? 'Rechazada' : status;
+  }
+
+  sourceLabel(source: string): string {
+    switch (source) {
+      case 'participant':
+        return 'Participante';
+      case 'operator_requeue':
+        return 'Re-encolada';
+      case 'operator_filler':
+        return 'Reserva';
+      case 'operator_direct':
+        return 'Operador';
+      case 'auto_inject':
+        return 'Auto-inyección';
+      default:
+        return source;
+    }
+  }
+
+  refreshReserve(): void {
+    this.reserveLoading = true;
+    this.reserveError = null;
+    this.fillerReserve.list().subscribe({
+      next: res => {
+        this.reserveEntries = res.entries;
+        this.reserveLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.reserveLoading = false;
+        this.reserveError = 'No se pudo cargar la reserva de relleno.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  exportReserveCsv(): void {
+    if (this.reserveBusy || this.batchBusy) {
+      return;
+    }
+    this.reserveError = null;
+    this.fillerReserve.exportCsv().subscribe({
+      next: blob => {
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `filler-reserve-${new Date().toISOString().slice(0, 10)}.csv`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      },
+      error: () => {
+        this.reserveError = 'No se pudo exportar la reserva.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  onImportFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    this.importFile = file;
+    this.batchSource = 'csv';
+    this.batchBusy = true;
+    this.reserveError = null;
+    this.fillerReserve.validateImport(file).subscribe({
+      next: validation => {
+        this.batchValidation = validation;
+        this.batchModalOpen = true;
+        this.batchBusy = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.importFile = null;
+        this.batchSource = null;
+        this.batchBusy = false;
+        this.reserveError = 'No se pudo validar el fichero de importación.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  validatePlaylist(): void {
+    const url = this.playlistUrl.trim();
+    if (!url || this.batchBusy) {
+      return;
+    }
+    this.batchSource = 'playlist';
+    this.importFile = null;
+    this.batchBusy = true;
+    this.reserveError = null;
+    this.fillerReserve.validatePlaylist(url).subscribe({
+      next: validation => {
+        this.batchValidation = validation;
+        this.batchModalOpen = true;
+        this.batchBusy = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.batchSource = null;
+        this.batchBusy = false;
+        this.reserveError = 'No se pudo validar la playlist.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  cancelBatch(): void {
+    this.batchModalOpen = false;
+    this.importFile = null;
+    this.batchValidation = null;
+    this.batchSource = null;
+    this.cdr.markForCheck();
+  }
+
+  confirmBatch(): void {
+    if (!this.batchValidation?.can_confirm || this.batchBusy || !this.batchSource) {
+      return;
+    }
+    this.batchBusy = true;
+    const request =
+      this.batchSource === 'csv' && this.importFile
+        ? this.fillerReserve.importReserve(this.importFile)
+        : this.batchSource === 'playlist'
+          ? this.fillerReserve.addPlaylist(this.playlistUrl.trim())
+          : null;
+    if (!request) {
+      this.batchBusy = false;
+      return;
+    }
+    request.subscribe({
+      next: res => {
+        this.reserveEntries = res.entries;
+        this.batchBusy = false;
+        if (this.batchSource === 'playlist') {
+          this.playlistUrl = '';
+        }
+        this.cancelBatch();
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.batchBusy = false;
+        const errors = err.error?.detail?.errors as { line: number; detail: string }[] | undefined;
+        if (errors?.length && this.batchValidation) {
+          this.batchValidation = {
+            ...this.batchValidation,
+            can_confirm: false,
+            errors,
+          };
+        } else {
+          this.reserveError =
+            this.batchSource === 'csv'
+              ? 'No se pudo importar la reserva.'
+              : 'No se pudo añadir la playlist.';
+          this.cancelBatch();
+        }
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  clearReserve(): void {
+    if (this.reserveBusy || this.batchBusy || this.reserveEntries.length === 0) {
+      return;
+    }
+    if (
+      !confirm(
+        '¿Vaciar toda la reserva de relleno? Esta acción no se puede deshacer.',
+      )
+    ) {
+      return;
+    }
+    this.reserveBusy = true;
+    this.reserveError = null;
+    this.fillerReserve.clearReserve().subscribe({
+      next: () => {
+        this.reserveBusy = false;
+        this.refreshReserve();
+      },
+      error: () => {
+        this.reserveBusy = false;
+        this.reserveError = 'No se pudo vaciar la reserva.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  mapBatchError(detail: string): string {
+    switch (detail) {
+      case 'invalid youtube reference':
+        return 'Referencia de YouTube no válida';
+      case 'duplicate in file':
+        return 'Vídeo duplicado en el fichero';
+      case 'duplicate in batch':
+        return 'Vídeo duplicado en el lote';
+      case 'playlist unavailable':
+        return 'Playlist no disponible';
+      case 'playlist empty':
+        return 'La playlist no tiene vídeos';
+      case 'playlist too large':
+        return 'La playlist supera el tamaño máximo procesable';
+      default:
+        return detail;
+    }
+  }
+
+  batchModalTitle(): string {
+    return this.batchSource === 'playlist'
+      ? 'Añadir playlist a la reserva'
+      : 'Importar reserva desde CSV';
+  }
+
+  batchConfirmLabel(): string {
+    return this.batchBusy
+      ? 'Añadiendo…'
+      : this.batchSource === 'playlist'
+        ? 'Confirmar playlist'
+        : 'Confirmar importación';
+  }
+
+  addToReserve(): void {
+    const value = this.reserveInput.trim();
+    if (!value || this.reserveBusy) {
+      return;
+    }
+    this.reserveBusy = true;
+    this.reserveError = null;
+    this.fillerReserve.add({ youtube_url_or_id: value }).subscribe({
+      next: () => {
+        this.reserveInput = '';
+        this.reserveBusy = false;
+        this.refreshReserve();
+      },
+      error: err => {
+        this.reserveBusy = false;
+        this.reserveError = this.mapQueueError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  deleteReserveEntry(id: string): void {
+    this.fillerReserve.delete(id).subscribe({
+      next: () => this.refreshReserve(),
+      error: err => {
+        this.reserveError = this.mapQueueError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  moveReserveEntry(id: string, direction: -1 | 1): void {
+    const index = this.reserveEntries.findIndex(entry => entry.id === id);
+    if (index < 0) {
+      return;
+    }
+    const target = index + direction;
+    if (target < 0 || target >= this.reserveEntries.length) {
+      return;
+    }
+    const ordered = [...this.reserveEntries];
+    const [item] = ordered.splice(index, 1);
+    ordered.splice(target, 0, item);
+    this.fillerReserve.reorder(ordered.map(entry => entry.id)).subscribe({
+      next: res => {
+        this.reserveEntries = res.entries;
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.reserveError = this.mapQueueError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  enqueueReserveEntry(id: string): void {
+    this.reserveBusy = true;
+    this.fillerReserve.enqueue(id).subscribe({
+      next: () => {
+        this.reserveBusy = false;
+        this.refreshReserve();
+      },
+      error: err => {
+        this.reserveBusy = false;
+        this.reserveError = this.mapQueueError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  operatorDirectEnqueue(): void {
+    const value = this.reserveInput.trim();
+    if (!value || this.reserveBusy) {
+      return;
+    }
+    this.reserveBusy = true;
+    this.reserveError = null;
+    this.queueAdmin.operatorSubmit(value).subscribe({
+      next: () => {
+        this.reserveInput = '';
+        this.reserveBusy = false;
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.reserveBusy = false;
+        this.reserveError = this.mapQueueError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  onFillerAutoInjectToggle(enabled: boolean): void {
+    if (this.fillerAutoInjectSaving) {
+      return;
+    }
+    const previous = this.fillerAutoInjectEnabled;
+    this.fillerAutoInjectEnabled = enabled;
+    this.fillerAutoInjectSaving = true;
+    this.eventConfigService.updateFillerAutoInject(enabled).subscribe({
+      next: config => {
+        this.fillerAutoInjectEnabled = config.filler_auto_inject_enabled;
+        if (this.eventConfig) {
+          this.eventConfig = {
+            ...this.eventConfig,
+            filler_auto_inject_enabled: config.filler_auto_inject_enabled,
+          };
+        }
+        this.fillerAutoInjectSaving = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.fillerAutoInjectEnabled = previous;
+        this.fillerAutoInjectSaving = false;
+        this.configError = 'No se pudo actualizar la inyección automática.';
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   saveEventConfig(): void {
@@ -484,6 +937,8 @@ export class AdminComponent implements OnInit, OnDestroy {
         return 'La cola está llena (100 canciones). Libera hueco antes de aprobar.';
       case 'video already in queue':
         return 'Ese vídeo ya está en la cola activa.';
+      case 'filler reserve is full':
+        return 'La reserva de relleno está llena (50 canciones).';
       case 'nothing to advance':
         return 'No hay nada que reproducir ni saltar.';
       case 'invalid status transition':

@@ -211,6 +211,269 @@
 
   <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="font-semibold">Historial</h2>
+        <p class="mt-1 text-sm text-jukebox-muted">
+          Canciones reproducidas o rechazadas. Re-encolar las devuelve a la cola activa.
+        </p>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <span class="text-jukebox-muted">Estado</span>
+        <select
+          class="rounded-lg border border-white/10 bg-jukebox-deep px-2 py-1"
+          [ngModel]="historyStatusFilter"
+          (ngModelChange)="onHistoryFilterChange($event)"
+          name="historyStatusFilter"
+        >
+          <option value="">Todos</option>
+          <option value="played">Reproducidas</option>
+          <option value="rejected">Rechazadas</option>
+        </select>
+      </label>
+    </div>
+
+    <p *ngIf="historyError" class="mb-4 text-sm text-red-400">{{ historyError }}</p>
+    <p *ngIf="historyLoading" class="text-sm text-jukebox-muted">Cargando historial…</p>
+
+    <div class="overflow-x-auto" *ngIf="!historyLoading">
+      <table class="w-full text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-4">Miniatura</th>
+            <th class="pb-2 pr-4">Título</th>
+            <th class="pb-2 pr-4">Vídeo</th>
+            <th class="pb-2 pr-4">Estado</th>
+            <th class="pb-2 pr-4">Finalizada</th>
+            <th class="pb-2 pr-4">Origen</th>
+            <th class="pb-2 pr-4">Participante</th>
+            <th class="pb-2 pr-4">Motivo rechazo</th>
+            <th class="pb-2">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of historyEntries" class="border-t border-white/10">
+            <td class="py-2 pr-4">
+              <img
+                *ngIf="entry.thumbnail_url"
+                [src]="entry.thumbnail_url"
+                [alt]="entry.title"
+                class="h-10 w-16 rounded object-cover"
+              />
+            </td>
+            <td class="py-2 pr-4">{{ entry.title }}</td>
+            <td class="py-2 pr-4 font-mono text-xs">{{ entry.youtube_video_id }}</td>
+            <td class="py-2 pr-4">{{ historyStatusLabel(entry.status) }}</td>
+            <td class="py-2 pr-4 text-jukebox-muted">{{ entry.finished_at | date: 'short' }}</td>
+            <td class="py-2 pr-4">{{ sourceLabel(entry.source) }}</td>
+            <td class="py-2 pr-4">{{ entry.submitted_by_display_name || '—' }}</td>
+            <td class="py-2 pr-4 text-jukebox-muted">{{ entry.rejection_reason || '—' }}</td>
+            <td class="py-2">
+              <button
+                type="button"
+                class="rounded bg-jukebox-accent px-2 py-1 text-xs font-semibold text-white"
+                (click)="requestRequeue(entry.id)"
+              >
+                Re-encolar
+              </button>
+            </td>
+          </tr>
+          <tr *ngIf="historyEntries.length === 0">
+            <td colspan="9" class="py-4 text-center text-jukebox-muted">No hay entradas en el historial.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-4 flex items-center justify-between gap-3 text-sm" *ngIf="historyTotal > historyPageSize">
+      <span class="text-jukebox-muted">
+        Página {{ historyPage }} de {{ historyPageCount() }} ({{ historyTotal }} total)
+      </span>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="rounded border border-white/20 px-3 py-1 disabled:opacity-50"
+          [disabled]="historyPage <= 1"
+          (click)="goHistoryPage(historyPage - 1)"
+        >
+          Anterior
+        </button>
+        <button
+          type="button"
+          class="rounded border border-white/20 px-3 py-1 disabled:opacity-50"
+          [disabled]="historyPage >= historyPageCount()"
+          (click)="goHistoryPage(historyPage + 1)"
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+    <div class="mb-4">
+      <h2 class="font-semibold">Reserva de relleno</h2>
+      <p class="mt-1 text-sm text-jukebox-muted">
+        Canciones de respaldo con prioridad baja. No aparecen en el kiosk hasta que entren en la cola.
+      </p>
+    </div>
+
+    <div class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-jukebox-deep/40 p-3">
+      <label class="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          class="h-4 w-4"
+          [checked]="fillerAutoInjectEnabled"
+          [disabled]="fillerAutoInjectSaving"
+          (change)="onFillerAutoInjectToggle($any($event.target).checked)"
+        />
+        <span>Inyección automática cuando la cola queda vacía</span>
+      </label>
+      <span *ngIf="fillerAutoInjectSaving" class="text-xs text-jukebox-muted">Guardando…</span>
+    </div>
+
+    <p *ngIf="reserveError" class="mb-4 text-sm text-red-400">{{ reserveError }}</p>
+
+    <div class="mb-4 flex flex-wrap gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
+        [disabled]="reserveBusy || batchBusy"
+        (click)="exportReserveCsv()"
+      >
+        Exportar CSV
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
+        [disabled]="reserveBusy || batchBusy"
+        (click)="importFileInput.click()"
+      >
+        {{ batchBusy && batchSource === 'csv' ? 'Validando…' : 'Importar CSV' }}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-red-400/40 px-4 py-2 text-sm text-red-300 disabled:opacity-50"
+        [disabled]="reserveBusy || batchBusy || reserveEntries.length === 0"
+        (click)="clearReserve()"
+      >
+        Vaciar
+      </button>
+      <input
+        #importFileInput
+        type="file"
+        class="hidden"
+        accept=".csv,text/csv,text/plain"
+        (change)="onImportFileSelected($event)"
+      />
+    </div>
+
+    <form class="mb-4 flex flex-wrap gap-2" (ngSubmit)="validatePlaylist(); $event.preventDefault()">
+      <input
+        class="min-w-[12rem] flex-1 rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2 text-sm"
+        type="text"
+        placeholder="URL de playlist o vídeo de YouTube"
+        [(ngModel)]="playlistUrl"
+        name="playlistUrl"
+      />
+      <button
+        type="submit"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
+        [disabled]="reserveBusy || batchBusy || !playlistUrl.trim()"
+      >
+        {{ batchBusy && batchSource === 'playlist' ? 'Validando…' : 'Añadir playlist' }}
+      </button>
+    </form>
+
+    <form class="mb-4 flex flex-wrap gap-2" (ngSubmit)="addToReserve(); $event.preventDefault()">
+      <input
+        class="min-w-[12rem] flex-1 rounded-lg border border-white/10 bg-jukebox-deep px-3 py-2 text-sm"
+        type="text"
+        placeholder="URL o ID de YouTube"
+        [(ngModel)]="reserveInput"
+        name="reserveInput"
+      />
+      <button
+        type="submit"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="reserveBusy"
+      >
+        Añadir a reserva
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm disabled:opacity-50"
+        [disabled]="reserveBusy"
+        (click)="operatorDirectEnqueue()"
+      >
+        Añadir directo a cola
+      </button>
+    </form>
+
+    <p *ngIf="reserveLoading" class="text-sm text-jukebox-muted">Cargando reserva…</p>
+
+    <div class="overflow-x-auto" *ngIf="!reserveLoading">
+      <table class="w-full text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-4">#</th>
+            <th class="pb-2 pr-4">Título</th>
+            <th class="pb-2 pr-4">Vídeo</th>
+            <th class="pb-2 pr-4">Duración</th>
+            <th class="w-[1%] whitespace-nowrap pb-2">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of reserveEntries; let i = index" class="border-t border-white/10">
+            <td class="py-2 pr-4 tabular-nums">{{ entry.position }}</td>
+            <td class="max-w-[14rem] truncate py-2 pr-4" [title]="entry.title">{{ entry.title }}</td>
+            <td class="py-2 pr-4 font-mono text-xs">{{ entry.youtube_video_id }}</td>
+            <td class="py-2 pr-4 tabular-nums">{{ formatDuration(entry.duration_sec) }}</td>
+            <td class="w-[1%] whitespace-nowrap py-2">
+              <div class="flex flex-nowrap items-center gap-2">
+                <button
+                  type="button"
+                  class="shrink-0 rounded border border-white/20 px-2 py-1 text-xs disabled:opacity-50"
+                  [disabled]="i === 0"
+                  (click)="moveReserveEntry(entry.id, -1)"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="shrink-0 rounded border border-white/20 px-2 py-1 text-xs disabled:opacity-50"
+                  [disabled]="i === reserveEntries.length - 1"
+                  (click)="moveReserveEntry(entry.id, 1)"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  class="shrink-0 rounded bg-jukebox-accent px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  [disabled]="reserveBusy"
+                  (click)="enqueueReserveEntry(entry.id)"
+                >
+                  Añadir a cola
+                </button>
+                <button
+                  type="button"
+                  class="shrink-0 rounded bg-red-600/70 px-2 py-1 text-xs text-white"
+                  (click)="deleteReserveEntry(entry.id)"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="reserveEntries.length === 0">
+            <td colspan="5" class="py-4 text-center text-jukebox-muted">La reserva está vacía.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <h2 class="font-semibold">Uso de API Keys</h2>
       <p *ngIf="apiKeyUsage as usage" class="text-sm text-jukebox-muted">
         Próximo reinicio: {{ formatResetAt(usage.next_reset_at) }}
@@ -437,6 +700,42 @@
 </main>
 
 <div
+  *ngIf="pendingRequeueId"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelRequeue()"
+>
+  <div
+    class="w-full max-w-md rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-white">¿Re-encolar canción?</h3>
+    <p class="mt-2 text-sm text-jukebox-muted">
+      Se creará una nueva entrada en la cola activa (sin pasar por moderación).
+    </p>
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelRequeue()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="requeueBusy"
+        (click)="confirmRequeue()"
+      >
+        {{ requeueBusy ? 'Re-encolando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div
   *ngIf="pendingQueueModeChange"
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
   role="presentation"
@@ -468,6 +767,78 @@
         (click)="confirmQueueModeChange()"
       >
         {{ queueModeSaving ? 'Guardando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div
+  *ngIf="batchModalOpen && batchValidation"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelBatch()"
+>
+  <div
+    class="w-full max-w-lg rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-white">{{ batchModalTitle() }}</h3>
+    <p class="mt-2 text-sm text-jukebox-muted">
+      Se añadirán <strong class="text-white">{{ batchValidation.add_count }}</strong> canciones
+      al final de la reserva actual.
+    </p>
+    <ul class="mt-3 space-y-1 text-sm text-jukebox-muted">
+      <li *ngIf="batchValidation.skipped_in_reserve > 0">
+        Omitidas (ya en reserva): {{ batchValidation.skipped_in_reserve }}
+      </li>
+      <li *ngIf="batchValidation.skipped_in_queue > 0">
+        Omitidas (en cola activa): {{ batchValidation.skipped_in_queue }}
+      </li>
+      <li *ngIf="batchValidation.skipped_unresolvable > 0">
+        Omitidas (no resolubles): {{ batchValidation.skipped_unresolvable }}
+      </li>
+      <li *ngIf="batchValidation.skipped_capacity > 0">
+        Omitidas (capacidad): {{ batchValidation.skipped_capacity }}
+      </li>
+    </ul>
+
+    <div *ngIf="batchValidation.errors.length > 0" class="mt-4 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-4">Línea</th>
+            <th class="pb-2">Motivo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let error of batchValidation.errors"
+            class="border-t border-white/10"
+          >
+            <td class="py-2 pr-4 tabular-nums">{{ error.line }}</td>
+            <td class="py-2">{{ mapBatchError(error.detail) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelBatch()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="!batchValidation.can_confirm || batchBusy"
+        (click)="confirmBatch()"
+      >
+        {{ batchConfirmLabel() }}
       </button>
     </div>
   </div>

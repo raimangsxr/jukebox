@@ -23,6 +23,20 @@ export interface QueueEntryRead {
   rejection_reason?: string | null;
   duration_sec?: number | null;
   created_at: string;
+  priority?: 'normal' | 'low';
+}
+
+export interface HistoryQueueEntryRead extends QueueEntryRead {
+  finished_at: string;
+  submitted_by_display_name?: string | null;
+  source: string;
+}
+
+export interface HistoryListResponse {
+  entries: HistoryQueueEntryRead[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 export interface PendingQueueEntryRead extends QueueEntryRead {

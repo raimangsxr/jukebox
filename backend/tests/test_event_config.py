@@ -104,6 +104,18 @@ def test_put_queue_mode_rejects_invalid(authed_client):
     assert response.status_code == 422
 
 
+def test_put_filler_auto_inject(authed_client, db_session):
+    response = authed_client.put(
+        "/api/event-config/filler-auto-inject",
+        json={"filler_auto_inject_enabled": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["filler_auto_inject_enabled"] is False
+
+    config = db_session.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
+    assert config.filler_auto_inject_enabled is False
+
+
 def test_put_queue_mode_rejects_anonymous(client):
     response = client.put(
         "/api/event-config/queue-mode",
