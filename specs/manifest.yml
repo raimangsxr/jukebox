@@ -171,7 +171,49 @@ changes:
       Auto-inject filler when queued is empty even while playing; skip/remove
       active duplicates from reserve; event-driven triggers including toggle-on.
 
+  - id: 021-collapsible-panels-reset
+    path: specs/021-collapsible-panels-reset/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Collapsible Admin and participant panels; participate reorder (votes →
+      submit → mis canciones); DELETE /api/queue/history to clear terminal rows
+      between events.
+
+  - id: 022-limit-reset-countdown
+    path: specs/022-limit-reset-countdown/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Live MM:SS countdown for vote/search quota reset on /participar; fixed
+      window from first full-quota consumption; server-authoritative reset_at.
+
+  - id: 023-admin-stats-panel
+    path: specs/023-admin-stats-panel/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Admin Estadísticas collapsible panel; GET /api/admin/stats with participation
+      totals, queue counts, top-10 submitters/voters/songs; load on expand only.
+
+  - id: 024-admin-queue-control
+    path: specs/024-admin-queue-control/
+    status: implemented
+    modifies:
+      - backend-api
+      - app-core
+    description: >-
+      Admin Cola de reproducción panel; GET/DELETE /api/queue/active; play-now,
+      vote-count, delete entry; move Iniciar/Saltar from Moderación; hard delete
+      on vaciar/eliminar.
+
 active:
-  change: null
+  change: 024-admin-queue-control
   contract: specs/contracts/backend-api/contract.md
-  context_pack: null
+  context_pack: specs/024-admin-queue-control/context-pack.md

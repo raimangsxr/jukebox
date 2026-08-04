@@ -16,33 +16,13 @@
     </button>
   </header>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="font-semibold">Moderación</h2>
-        <p class="mt-1 text-sm text-jukebox-muted">{{ playbackStatusLabel }}</p>
-        <p *ngIf="playbackAudioHint" class="mt-1 text-xs text-amber-300">{{ playbackAudioHint }}</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-          [disabled]="!canStartPlayback || playbackBusy"
-          (click)="advancePlayback()"
-        >
-          Iniciar reproducción
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-white/20 px-3 py-1.5 text-sm disabled:opacity-50"
-          [disabled]="!canSkipPlayback || playbackBusy"
-          (click)="advancePlayback()"
-        >
-          Saltar canción
-        </button>
-      </div>
-    </div>
-
+  <div class="admin-panels flex flex-col gap-4">
+  <app-collapsible-section
+    title="Moderación"
+    [expanded]="panelExpanded.moderation"
+    [badge]="moderationBadge()"
+    (expandedChange)="setPanelExpanded('moderation', $event)"
+  >
     <div class="mb-4 space-y-3 rounded-lg border border-white/10 bg-jukebox-deep/40 p-3">
       <p class="text-sm font-medium">Modo de cola</p>
       <div class="flex flex-wrap gap-2">
@@ -207,29 +187,246 @@
         No hay canciones pendientes de revisión.
       </p>
     </div>
-  </section>
+  </app-collapsible-section>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+  <app-collapsible-section
+    title="Cola de reproducción"
+    [expanded]="panelExpanded.queue"
+    [badge]="queueBadge()"
+    (expandedChange)="setPanelExpanded('queue', $event)"
+  >
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="font-semibold">Historial</h2>
-        <p class="mt-1 text-sm text-jukebox-muted">
+        <p class="text-sm text-jukebox-muted">{{ playbackStatusLabel }}</p>
+        <p *ngIf="playbackAudioHint" class="mt-1 text-xs text-amber-300">{{ playbackAudioHint }}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-lg bg-jukebox-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          [disabled]="!canStartPlayback || playbackBusy"
+          (click)="advancePlayback()"
+        >
+          Iniciar reproducción
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-white/20 px-3 py-1.5 text-sm disabled:opacity-50"
+          [disabled]="!canSkipPlayback || playbackBusy"
+          (click)="advancePlayback()"
+        >
+          Saltar canción
+        </button>
+        <button
+          type="button"
+          class="rounded-lg border border-red-400/40 px-3 py-1.5 text-sm text-red-300 disabled:opacity-50"
+          [disabled]="isActiveQueueEmpty() || clearActiveQueueBusy"
+          (click)="requestClearActiveQueue()"
+        >
+          Vaciar cola
+        </button>
+      </div>
+    </div>
+
+    <p *ngIf="queuePanelError" class="mb-4 text-sm text-red-400">{{ queuePanelError }}</p>
+    <p *ngIf="activeQueueError" class="mb-4 text-sm text-red-400">{{ activeQueueError }}</p>
+    <p *ngIf="activeQueueLoading" class="text-sm text-jukebox-muted">Cargando cola de reproducción…</p>
+
+    <div class="hidden md:block" *ngIf="!activeQueueLoading">
+      <table class="admin-queue-table w-full table-fixed text-left text-sm">
+        <thead class="text-jukebox-muted">
+          <tr>
+            <th class="pb-2 pr-2">Canción</th>
+            <th class="pb-2 pr-2 w-[3.5rem]">Votos</th>
+            <th class="pb-2 pr-2 w-[6.5rem]">Cola</th>
+            <th class="pb-2 pr-2">Detalles</th>
+            <th class="pb-2 w-[7.5rem]">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of activeQueueRows()" class="border-t border-white/10">
+            <td class="py-2 pr-2 align-top">
+              <div class="flex min-w-0 items-start gap-2">
+                <img
+                  *ngIf="entry.thumbnail_url"
+                  [src]="entry.thumbnail_url"
+                  [alt]="entry.title"
+                  class="h-9 w-14 shrink-0 rounded object-cover"
+                  loading="lazy"
+                />
+                <div class="min-w-0">
+                  <p class="truncate font-medium leading-snug" [title]="entry.title">{{ entry.title }}</p>
+                  <a
+                    class="mt-0.5 inline-block text-xs text-jukebox-primary hover:underline"
+                    [href]="youtubeUrl(entry.youtube_video_id)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Previsualizar
+                  </a>
+                </div>
+              </div>
+            </td>
+            <td class="py-2 pr-2 align-top tabular-nums">{{ entry.vote_count }}</td>
+            <td class="py-2 pr-2 align-top text-jukebox-muted">
+              <span class="block leading-snug">{{ activeQueueStatusLabel(entry) }}</span>
+              <span *ngIf="!isNowPlayingEntry(entry)" class="mt-0.5 block text-xs tabular-nums">
+                Pos. {{ entry.position ?? '—' }}
+              </span>
+            </td>
+            <td class="py-2 pr-2 align-top text-xs leading-snug text-jukebox-muted">
+              <span class="block">
+                {{ priorityLabel(entry.priority) }} · {{ formatDuration(entry.duration_sec) }}
+              </span>
+              <span class="mt-0.5 block truncate" [title]="activeQueueSourceLabel(entry.source)">
+                {{ activeQueueSourceLabel(entry.source) }}
+              </span>
+              <span
+                class="mt-0.5 block truncate"
+                [title]="activeQueueSubmitterLabel(entry)"
+              >
+                {{ activeQueueSubmitterLabel(entry) }}
+              </span>
+              <span class="mt-0.5 block">{{ formatCreatedAt(entry.created_at) }}</span>
+            </td>
+            <td class="py-2 align-top">
+              <div class="flex flex-col gap-1">
+                <button
+                  *ngIf="!isNowPlayingEntry(entry)"
+                  type="button"
+                  class="rounded bg-jukebox-accent px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  [disabled]="isActiveQueueRowBusy(entry.id)"
+                  (click)="forcePlayEntry(entry.id)"
+                >
+                  Forzar reproducir
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-white/20 px-2 py-1 text-xs disabled:opacity-50"
+                  [disabled]="isActiveQueueRowBusy(entry.id)"
+                  (click)="requestVoteEdit(entry)"
+                >
+                  Modificar votos
+                </button>
+                <button
+                  type="button"
+                  class="rounded bg-red-600/70 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  [disabled]="isActiveQueueRowBusy(entry.id)"
+                  (click)="requestDeleteActive(entry.id)"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="activeQueueRows().length === 0">
+            <td colspan="5" class="py-4 text-center text-jukebox-muted">{{ activeQueueEmptyLabel }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="space-y-3 md:hidden" *ngIf="!activeQueueLoading">
+      <article
+        *ngFor="let entry of activeQueueRows()"
+        class="rounded-lg border border-white/10 bg-jukebox-deep/40 p-3"
+      >
+        <div class="flex gap-3">
+          <img
+            *ngIf="entry.thumbnail_url"
+            [src]="entry.thumbnail_url"
+            [alt]="entry.title"
+            class="h-14 w-24 shrink-0 rounded object-cover"
+            loading="lazy"
+          />
+          <div class="min-w-0">
+            <p class="font-medium">{{ entry.title }}</p>
+            <p class="mt-1 text-xs text-jukebox-muted">
+              {{ activeQueueStatusLabel(entry) }} · {{ entry.vote_count }} votos ·
+              {{ priorityLabel(entry.priority) }}
+            </p>
+            <p class="mt-1 text-xs text-jukebox-muted">
+              {{ activeQueueSourceLabel(entry.source) }} · {{ activeQueueSubmitterLabel(entry) }}
+            </p>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <a
+            class="rounded border border-white/20 px-3 py-1.5 text-xs"
+            [href]="youtubeUrl(entry.youtube_video_id)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Previsualizar
+          </a>
+          <button
+            *ngIf="!isNowPlayingEntry(entry)"
+            type="button"
+            class="rounded bg-jukebox-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            [disabled]="isActiveQueueRowBusy(entry.id)"
+            (click)="forcePlayEntry(entry.id)"
+          >
+            Forzar reproducir
+          </button>
+          <button
+            type="button"
+            class="rounded border border-white/20 px-3 py-1.5 text-xs disabled:opacity-50"
+            [disabled]="isActiveQueueRowBusy(entry.id)"
+            (click)="requestVoteEdit(entry)"
+          >
+            Modificar votos
+          </button>
+          <button
+            type="button"
+            class="rounded bg-red-600/70 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            [disabled]="isActiveQueueRowBusy(entry.id)"
+            (click)="requestDeleteActive(entry.id)"
+          >
+            Eliminar
+          </button>
+        </div>
+      </article>
+      <p *ngIf="activeQueueRows().length === 0" class="py-4 text-center text-sm text-jukebox-muted">
+        {{ activeQueueEmptyLabel }}
+      </p>
+    </div>
+  </app-collapsible-section>
+
+  <app-collapsible-section
+    title="Historial"
+    [expanded]="panelExpanded.history"
+    [badge]="historyBadge()"
+    (expandedChange)="setPanelExpanded('history', $event)"
+  >
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <p class="text-sm text-jukebox-muted">
           Canciones reproducidas o rechazadas. Re-encolar las devuelve a la cola activa.
         </p>
       </div>
-      <label class="flex items-center gap-2 text-sm">
-        <span class="text-jukebox-muted">Estado</span>
-        <select
-          class="rounded-lg border border-white/10 bg-jukebox-deep px-2 py-1"
-          [ngModel]="historyStatusFilter"
-          (ngModelChange)="onHistoryFilterChange($event)"
-          name="historyStatusFilter"
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="rounded-lg border border-red-400/40 px-3 py-1.5 text-sm text-red-300 disabled:opacity-50"
+          [disabled]="historyTotalAll === 0 || clearHistoryBusy"
+          (click)="requestClearHistory()"
         >
-          <option value="">Todos</option>
-          <option value="played">Reproducidas</option>
-          <option value="rejected">Rechazadas</option>
-        </select>
-      </label>
+          Vaciar historial
+        </button>
+        <label class="flex items-center gap-2 text-sm">
+          <span class="text-jukebox-muted">Estado</span>
+          <select
+            class="rounded-lg border border-white/10 bg-jukebox-deep px-2 py-1"
+            [ngModel]="historyStatusFilter"
+            (ngModelChange)="onHistoryFilterChange($event)"
+            name="historyStatusFilter"
+          >
+            <option value="">Todos</option>
+            <option value="played">Reproducidas</option>
+            <option value="rejected">Rechazadas</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <p *ngIf="historyError" class="mb-4 text-sm text-red-400">{{ historyError }}</p>
@@ -307,12 +504,155 @@
         </button>
       </div>
     </div>
-  </section>
+  </app-collapsible-section>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+  <app-collapsible-section
+    title="Estadísticas"
+    [expanded]="panelExpanded.stats"
+    (expandedChange)="setPanelExpanded('stats', $event)"
+  >
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-jukebox-muted">
+        Totales de participación y cola. Se actualizan al expandir o con Actualizar.
+      </p>
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-3 py-1.5 text-sm disabled:opacity-50"
+        [disabled]="statsLoading"
+        (click)="loadStats()"
+      >
+        Actualizar
+      </button>
+    </div>
+
+    <p *ngIf="statsError" class="mb-4 text-sm text-red-400">{{ statsError }}</p>
+    <p *ngIf="statsLoading" class="text-sm text-jukebox-muted">Cargando estadísticas…</p>
+
+    <div *ngIf="!statsLoading && statsSnapshot as stats" class="space-y-6">
+      <section>
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-jukebox-muted">Resumen</h3>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="rounded-lg border border-white/10 bg-jukebox-deep/50 p-3">
+            <p class="text-xs text-jukebox-muted">Participantes activos</p>
+            <p class="text-xl font-semibold">{{ stats.participants_active_count }}</p>
+          </div>
+          <div class="rounded-lg border border-white/10 bg-jukebox-deep/50 p-3">
+            <p class="text-xs text-jukebox-muted">Envíos totales</p>
+            <p class="text-xl font-semibold">{{ stats.total_submissions }}</p>
+          </div>
+          <div class="rounded-lg border border-white/10 bg-jukebox-deep/50 p-3">
+            <p class="text-xs text-jukebox-muted">Votos emitidos</p>
+            <p class="text-xl font-semibold">{{ stats.total_votes_cast }}</p>
+          </div>
+          <div class="rounded-lg border border-white/10 bg-jukebox-deep/50 p-3">
+            <p class="text-xs text-jukebox-muted">Canciones con votos</p>
+            <p class="text-xl font-semibold">{{ stats.distinct_voted_songs_count }}</p>
+          </div>
+        </div>
+        <p
+          *ngIf="
+            stats.participants_active_count === 0 &&
+            stats.total_submissions === 0 &&
+            stats.total_votes_cast === 0
+          "
+          class="mt-2 text-sm text-jukebox-muted"
+        >
+          {{ summaryEmptyLabel }}
+        </p>
+      </section>
+
+      <section>
+        <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-jukebox-muted">
+          Estado de cola
+        </h3>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div class="rounded border border-white/10 px-2 py-2 text-center text-sm">
+            <p class="text-xs text-jukebox-muted">Pendientes</p>
+            <p class="font-semibold">{{ stats.queue_counts.pending_review }}</p>
+          </div>
+          <div class="rounded border border-white/10 px-2 py-2 text-center text-sm">
+            <p class="text-xs text-jukebox-muted">En cola</p>
+            <p class="font-semibold">{{ stats.queue_counts.queued }}</p>
+          </div>
+          <div class="rounded border border-white/10 px-2 py-2 text-center text-sm">
+            <p class="text-xs text-jukebox-muted">Sonando</p>
+            <p class="font-semibold">{{ stats.queue_counts.playing }}</p>
+          </div>
+          <div class="rounded border border-white/10 px-2 py-2 text-center text-sm">
+            <p class="text-xs text-jukebox-muted">Reproducidas</p>
+            <p class="font-semibold">{{ stats.queue_counts.played }}</p>
+          </div>
+          <div class="rounded border border-white/10 px-2 py-2 text-center text-sm">
+            <p class="text-xs text-jukebox-muted">Rechazadas</p>
+            <p class="font-semibold">{{ stats.queue_counts.rejected }}</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h3 class="mb-2 text-sm font-semibold">Más canciones enviadas</h3>
+        <ol *ngIf="stats.top_submitters.length > 0" class="space-y-1 text-sm">
+          <li
+            *ngFor="let row of stats.top_submitters; let i = index"
+            class="flex justify-between gap-2 border-b border-white/5 py-1"
+          >
+            <span>{{ i + 1 }}. {{ statsParticipantLabel(row) }}</span>
+            <span class="text-jukebox-muted">{{ row.count }}</span>
+          </li>
+        </ol>
+        <p *ngIf="stats.top_submitters.length === 0" class="text-sm text-jukebox-muted">
+          {{ rankingEmptyLabel }}
+        </p>
+      </section>
+
+      <section>
+        <h3 class="mb-2 text-sm font-semibold">Más votos emitidos</h3>
+        <ol *ngIf="stats.top_voters.length > 0" class="space-y-1 text-sm">
+          <li
+            *ngFor="let row of stats.top_voters; let i = index"
+            class="flex justify-between gap-2 border-b border-white/5 py-1"
+          >
+            <span>{{ i + 1 }}. {{ statsParticipantLabel(row) }}</span>
+            <span class="text-jukebox-muted">{{ row.count }}</span>
+          </li>
+        </ol>
+        <p *ngIf="stats.top_voters.length === 0" class="text-sm text-jukebox-muted">
+          {{ rankingEmptyLabel }}
+        </p>
+      </section>
+
+      <section>
+        <h3 class="mb-2 text-sm font-semibold">Canciones más votadas</h3>
+        <ol *ngIf="stats.top_songs.length > 0" class="space-y-1 text-sm">
+          <li
+            *ngFor="let row of stats.top_songs; let i = index"
+            class="flex justify-between gap-2 border-b border-white/5 py-1"
+          >
+            <span class="min-w-0 truncate" [title]="row.title">{{ i + 1 }}. {{ row.title }}</span>
+            <span class="shrink-0 text-jukebox-muted">{{ row.vote_count }}</span>
+          </li>
+        </ol>
+        <p *ngIf="stats.top_songs.length === 0" class="text-sm text-jukebox-muted">
+          {{ rankingEmptyLabel }}
+        </p>
+      </section>
+    </div>
+
+    <p
+      *ngIf="!statsLoading && !statsSnapshot && !statsError"
+      class="text-sm text-jukebox-muted"
+    >
+      Expande este panel para cargar las estadísticas.
+    </p>
+  </app-collapsible-section>
+
+  <app-collapsible-section
+    title="Reserva de relleno"
+    [expanded]="panelExpanded.reserve"
+    (expandedChange)="setPanelExpanded('reserve', $event)"
+  >
     <div class="mb-4">
-      <h2 class="font-semibold">Reserva de relleno</h2>
-      <p class="mt-1 text-sm text-jukebox-muted">
+      <p class="text-sm text-jukebox-muted">
         Canciones de respaldo con prioridad baja. No aparecen en el kiosk hasta que entren en la cola.
       </p>
     </div>
@@ -470,11 +810,14 @@
         </tbody>
       </table>
     </div>
-  </section>
+  </app-collapsible-section>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
+  <app-collapsible-section
+    title="Uso de API Keys"
+    [expanded]="panelExpanded.apiKeys"
+    (expandedChange)="setPanelExpanded('apiKeys', $event)"
+  >
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h2 class="font-semibold">Uso de API Keys</h2>
       <p *ngIf="apiKeyUsage as usage" class="text-sm text-jukebox-muted">
         Próximo reinicio: {{ formatResetAt(usage.next_reset_at) }}
       </p>
@@ -523,11 +866,13 @@
         No hay API keys de YouTube configuradas.
       </p>
     </ng-template>
-  </section>
+  </app-collapsible-section>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
-    <h2 class="mb-4 font-semibold">Evento</h2>
-
+  <app-collapsible-section
+    title="Evento"
+    [expanded]="panelExpanded.event"
+    (expandedChange)="setPanelExpanded('event', $event)"
+  >
     <p *ngIf="configLoading" class="text-sm text-jukebox-muted">Cargando configuración…</p>
     <p *ngIf="configError" class="mb-4 text-sm text-red-400">{{ configError }}</p>
 
@@ -604,10 +949,13 @@
         </span>
       </div>
     </form>
-  </section>
+  </app-collapsible-section>
 
-  <section class="rounded-xl border border-white/10 bg-jukebox-surface p-4">
-    <h2 class="mb-2 font-semibold">Tokens de iframe</h2>
+  <app-collapsible-section
+    title="Tokens de iframe"
+    [expanded]="panelExpanded.tokens"
+    (expandedChange)="setPanelExpanded('tokens', $event)"
+  >
     <p class="mb-4 text-sm text-jukebox-muted">
       Crea un token para embeber la app en kiosk-screen mediante
       <code class="rounded bg-jukebox-deep px-1">?token=&lt;plaintext&gt;</code>.
@@ -696,8 +1044,166 @@
         </tbody>
       </table>
     </div>
-  </section>
+  </app-collapsible-section>
+  </div>
 </main>
+
+<div
+  *ngIf="pendingClearHistory"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelClearHistory()"
+>
+  <div
+    class="w-full max-w-md rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-white">¿Vaciar historial?</h3>
+    <p class="mt-2 text-sm text-jukebox-muted">
+      Se eliminarán permanentemente todas las canciones reproducidas y rechazadas del historial.
+      Esta acción no se puede deshacer.
+    </p>
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelClearHistory()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="clearHistoryBusy"
+        (click)="confirmClearHistory()"
+      >
+        {{ clearHistoryBusy ? 'Vaciando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div
+  *ngIf="pendingClearActiveQueue"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelClearActiveQueue()"
+>
+  <div
+    class="w-full max-w-md rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-white">¿Vaciar cola de reproducción?</h3>
+    <p class="mt-2 text-sm text-jukebox-muted">
+      Se eliminarán permanentemente todas las canciones en reproducción y en cola. Esta acción no
+      se puede deshacer.
+    </p>
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelClearActiveQueue()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="clearActiveQueueBusy"
+        (click)="confirmClearActiveQueue()"
+      >
+        {{ clearActiveQueueBusy ? 'Vaciando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div
+  *ngIf="pendingDeleteActiveId"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelDeleteActive()"
+>
+  <div
+    class="w-full max-w-md rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-white">¿Eliminar de la cola?</h3>
+    <p class="mt-2 text-sm text-jukebox-muted">
+      Se eliminará permanentemente esta canción de la cola de reproducción. Esta acción no se puede
+      deshacer.
+    </p>
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelDeleteActive()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-red-600/80 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="deleteActiveBusy"
+        (click)="confirmDeleteActive()"
+      >
+        {{ deleteActiveBusy ? 'Eliminando…' : 'Confirmar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<div
+  *ngIf="pendingVoteEditEntry"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+  role="presentation"
+  (click)="cancelVoteEdit()"
+>
+  <div
+    class="w-full max-w-md rounded-xl border border-white/10 bg-jukebox-surface p-5 shadow-xl"
+    role="dialog"
+    aria-modal="true"
+    (click)="$event.stopPropagation()"
+  >
+    <h3 class="text-lg font-semibold text-white">Modificar votos</h3>
+    <p class="mt-2 text-sm text-jukebox-muted">{{ pendingVoteEditEntry.title }}</p>
+    <label class="mt-4 block text-sm">
+      <span class="text-jukebox-muted">Número de votos</span>
+      <input
+        class="mt-1 w-full rounded border border-white/10 bg-jukebox-deep px-3 py-2 text-sm"
+        type="text"
+        inputmode="numeric"
+        [(ngModel)]="voteEditInput"
+        name="voteEditInput"
+        (ngModelChange)="voteEditError = null"
+      />
+    </label>
+    <p *ngIf="voteEditError" class="mt-2 text-sm text-red-400">{{ voteEditError }}</p>
+    <div class="mt-5 flex flex-wrap justify-end gap-2">
+      <button
+        type="button"
+        class="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/5"
+        (click)="cancelVoteEdit()"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        class="rounded-lg bg-jukebox-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        [disabled]="voteEditBusy"
+        (click)="saveVoteEdit()"
+      >
+        {{ voteEditBusy ? 'Guardando…' : 'Guardar' }}
+      </button>
+    </div>
+  </div>
+</div>
 
 <div
   *ngIf="pendingRequeueId"

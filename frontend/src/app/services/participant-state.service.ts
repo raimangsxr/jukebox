@@ -123,26 +123,8 @@ export class ParticipantStateService implements OnDestroy {
       eventListeners: {
         state: (event: MessageEvent<string>) => {
           try {
-            const sseState = JSON.parse(event.data) as StateResponse;
-            const current = this.stateSubject.value;
-            if (!current) {
-              void this.refresh();
-              return;
-            }
-            const limits = sseState.participant_limits;
-            const merged: ParticipantStateResponse = {
-              ...current,
-              revision: sseState.revision,
-              now_playing: sseState.now_playing,
-              queue: sseState.queue,
-              event_config: sseState.event_config,
-              participant_limits: limits,
-              max_pending_submissions: limits.max_pending_submissions,
-              max_searches_10_minutes: limits.max_searches_10_minutes,
-              max_votes_10_minutes: limits.max_votes_10_minutes,
-            };
-            applyTheme(merged.event_config?.theme);
-            this.stateSubject.next(merged);
+            JSON.parse(event.data) as StateResponse;
+            void this.refresh();
             void this.refreshSubmissions();
           } catch {
             // ignore malformed payloads

@@ -8,10 +8,12 @@ from ..schemas import (
     HistoryListResponse,
     OperatorQueueSubmitRequest,
     PendingListResponse,
+    ActiveQueueListResponse,
     QueueEntryRead,
     RejectBody,
     StateResponse,
     SubmitRequest,
+    VoteCountUpdateRequest,
 )
 from ..security import CurrentParticipant, CurrentUser
 from ..services import queue_service
@@ -31,6 +33,39 @@ def get_queue_history(
     return queue_service.list_history(
         db, status_filter=status, page=page, page_size=page_size
     )
+
+
+@router.delete("/history", status_code=204)
+def clear_queue_history(
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> None:
+    queue_service.clear_history(db)
+
+
+@router.get("/active", response_model=ActiveQueueListResponse)
+def get_active_queue(
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> ActiveQueueListResponse:
+    return queue_service.list_active_queue(db)
+
+
+@router.delete("/active", response_model=StateResponse)
+def clear_active_queue(
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> StateResponse:
+    return queue_service.clear_active_queue(db)
+
+
+@router.delete("/active/{entry_id}", response_model=StateResponse)
+def delete_active_queue_entry(
+    entry_id: str,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> StateResponse:
+    return queue_service.delete_active_entry(db, entry_id)
 
 
 @router.post("/history/{entry_id}/requeue", response_model=QueueEntryRead, status_code=201)
@@ -91,6 +126,25 @@ def skip_queue(
     db: Session = Depends(get_db),
 ) -> StateResponse:
     return queue_service.skip_or_advance(db)
+
+
+@router.post("/{entry_id}/play-now", response_model=StateResponse)
+def play_queue_entry_now(
+    entry_id: str,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> StateResponse:
+    return queue_service.force_play_entry(db, entry_id)
+
+
+@router.patch("/{entry_id}/vote-count", response_model=StateResponse)
+def update_queue_entry_vote_count(
+    entry_id: str,
+    body: VoteCountUpdateRequest,
+    _user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> StateResponse:
+    return queue_service.set_entry_vote_count(db, entry_id, body.vote_count)
 
 
 @router.post("/dev-submit", response_model=QueueEntryRead, status_code=201)

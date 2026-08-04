@@ -216,6 +216,29 @@ class Participant(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    votes_quota_reset_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    searches_quota_reset_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ParticipantSearch(Base):
+    __tablename__ = "participant_searches"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    participant_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("participants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

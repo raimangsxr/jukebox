@@ -148,7 +148,7 @@ Spanish search strings: see change 008 contract deltas (`search_heading`, `searc
 - **Mis canciones**: status badges (Pendiente de revisión, En cola, Sonando, Reproducida, Rechazada) + rejection reason; refreshes on SSE revision
 - Cola votable: unchanged from 005
 - `ParticipantService` — `startGoogleLogin()`, `parseOAuthReturnQuery()`, `getSearchConfig()`, `searchYoutube()`, `submitSong(url, searchQuery?)`, `getSubmissions()`, `mapSubmitError()`, `mapSearchError()`, `loadMe()`, `castVote()`, `devAuth()`
-- `ParticipantStateService` — `GET /api/participant/state`, `refreshSubmissions()`, SSE `/api/events/stream` (`state` + `notification`), preserves `votes_remaining` on SSE merge; forwards `notification` to toast service when `participant_id` matches session
+- `ParticipantStateService` — `GET /api/participant/state`, `refreshSubmissions()`, SSE `/api/events/stream` (`state` + `notification`); on SSE `state` calls full `refresh()` (limits + countdown fields); forwards `notification` to toast service when `participant_id` matches session
 - `NotificationToastService` — FIFO toast queue, dedupe `type:queue_entry_id`, 8s auto-dismiss, manual dismiss, Spanish copy
 - `NotificationToastComponent` — fixed bottom toast on `/participar` (authenticated only)
 
@@ -208,16 +208,25 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 
 - After auth, if `sessionStorage` lacks `jukebox.participantRulesAccepted`, show **Normas de participación** with limits from `GET /api/participant/state` (`max_pending_submissions`, `max_searches_10_minutes`, `max_votes_10_minutes`)
 - **Entendido, participar** sets session flag and starts full participate UI + SSE
-- `votesRemainingLabel` uses dynamic `max_votes_10_minutes` (10-minute window)
+- `votesRemainingLabel` / `searchesRemainingLabel` use dynamic maxima; when `*_quota_reset_at` is active append «· Cupo completo en MM:SS» (1 Hz client tick; auto `refresh()` at `00:00`)
 
 ## Admin queue history and filler reserve (017)
 
-### Admin `/admin`
+### Collapsible panels and layout (021)
 
-- **Historial**: paginated played/rejected list with status filter; re-encolar with confirm; 409 handling
+**Shared** `CollapsibleSectionComponent`: `title`, `expanded`, optional `badge`, `expandedChange`; button header with `aria-expanded` / `aria-controls`; chevron rotates ~90° when expanded.
+
+**Admin `/admin`**: collapsible sections — Moderación (default expanded, badge pending count), **Cola de reproducción** (collapsed, badge active count), Historial (collapsed, badge `historyTotalAll` unfiltered), **Estadísticas** (collapsed, no badge), Reserva, API Keys, Evento, Tokens (collapsed, no badge). Live status + header outside panels. SSE `state` refreshes pending + history + **active queue panel when expanded** (does **not** refresh Estadísticas). Moderación: queue mode + pending only (**no** Iniciar/Saltar or playback status). Cola de reproducción: playback status, Iniciar/Saltar, full active list, vaciar, per-row force play / edit votes / delete.
+
+**Participate `/participar`**: fixed «Sonando ahora» strip (when playing) → panel Cola votable (expanded, vote quota + countdown in header) → Enviar canciones (collapsed, search quota + countdown in Buscar en YouTube) → Mis canciones (collapsed).
+
+### Admin `/admin` (017 + 021)
+
+- **Historial**: paginated played/rejected list with status filter; re-encolar with confirm; **Vaciar historial** with confirm modal; `historyTotalAll` badge independent of filter; 409 handling
+- **Estadísticas**: collapsed by default, after Historial; on expand → `GET /api/admin/stats`; **Actualizar** re-fetches; no SSE/polling refresh while open. Sections (Spanish): Resumen → Estado de cola → Más canciones enviadas → Más votos emitidos → Canciones más votadas; empty rankings «Sin datos aún»; mobile compact layout (≤2 viewport heights for v1)
 - **Reserva de relleno**: ordered reserve list, add URL, reorder (↑↓), enqueue to active queue, delete, **Añadir directo a cola** (`operator-submit`), **Exportar CSV** / **Importar CSV** (validate → shared preview modal → confirm → append), **Añadir playlist** (URL input → validate → shared preview modal → confirm → append), **Vaciar** (confirm → `DELETE /api/filler-reserve`)
 - **Inyección automática** toggle bound to `PUT /api/event-config/filler-auto-inject`
-- Services: `QueueAdminService` (`getHistory`, `requeue`, `operatorSubmit`), `FillerReserveService`, `EventConfigService.updateFillerAutoInject`
+- Services: `QueueAdminService` (`getHistory`, `requeue`, `operatorSubmit`, `clearHistory`, `getActiveQueue`, `clearActiveQueue`, `deleteActiveEntry`, `playNow`, `setVoteCount`), `FillerReserveService`, `EventConfigService.updateFillerAutoInject`, `AdminStatsService` (`getStats`)
 
 ### Participar / kiosk
 
@@ -241,3 +250,6 @@ Kiosk `/` (`DisplayStateService`) ignores `notification` SSE events.
 - **018-filler-reserve-csv** — Exportar CSV / Importar CSV on Reserva de relleno; import preview modal with line errors; `exportCsv`, `validateImport`, `importReserve` on `FillerReserveService`
 - **019-filler-reserve-playlist** — shared batch preview modal (`add_count`, `skipped_*`); CSV append; playlist URL + **Añadir playlist**; **Vaciar** with confirm; `validatePlaylist`, `addPlaylist`, `clearReserve` on `FillerReserveService`
 - **020-fill-queue-from-reserve** — backend auto-inject while `playing` surfaces filler in kiosk strip and participant queue via existing SSE (no frontend changes)
+- **021-collapsible-panels-reset** — `CollapsibleSectionComponent`; Admin/participate collapsible layout; `QueueAdminService.clearHistory`; `DELETE /api/queue/history`
+- **023-admin-stats-panel** — Admin Estadísticas panel; `AdminStatsService`; load on expand + Actualizar only
+- **024-admin-queue-control** — Admin Cola de reproducción panel after Moderación; playback controls moved from Moderación; active queue CRUD APIs

@@ -53,6 +53,9 @@ export interface StateResponse {
 
 export interface ParticipantStateResponse extends StateResponse {
   votes_remaining: number;
+  searches_remaining: number;
+  votes_quota_reset_at: string | null;
+  searches_quota_reset_at: string | null;
   max_pending_submissions: number;
   max_searches_10_minutes: number;
   max_votes_10_minutes: number;
@@ -69,4 +72,14 @@ export interface NotificationEventRead {
 
 export interface PendingListResponse {
   entries: PendingQueueEntryRead[];
+}
+
+export interface ActiveQueueEntryRead extends QueueEntryRead {
+  submitted_by_display_name?: string | null;
+  source: string;
+}
+
+export interface ActiveQueueListResponse {
+  now_playing: ActiveQueueEntryRead | null;
+  queued: ActiveQueueEntryRead[];
 }

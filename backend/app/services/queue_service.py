@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -18,10 +18,24 @@ from ..models import (
     QueueEntryStatus,
     QueueMode,
 )
-from ..schemas import HistoryListResponse, HistoryQueueEntryRead, PendingQueueEntryRead, QueueEntryRead, StateResponse
+from ..schemas import (
+    ActiveQueueEntryRead,
+    ActiveQueueListResponse,
+    HistoryListResponse,
+    HistoryQueueEntryRead,
+    PendingQueueEntryRead,
+    QueueEntryRead,
+    StateResponse,
+)
 from .notification_service import emit_song_approved, emit_song_up_next
 from .queue_ordering import queued_order_columns
-from .state_service import build_state_response, bump_revision, get_now_playing, get_or_create_runtime
+from .state_service import (
+    build_state_response,
+    bump_revision,
+    get_all_queued,
+    get_now_playing,
+    get_or_create_runtime,
+)
 from .youtube_meta import (
     fetch_youtube_duration_sec,
     fetch_youtube_metadata_strict,
@@ -35,6 +49,7 @@ ACTIVE_DUPLICATE_STATUSES = (
 )
 
 TERMINAL_STATUSES = (QueueEntryStatus.played, QueueEntryStatus.rejected)
+ACTIVE_QUEUE_STATUSES = (QueueEntryStatus.queued, QueueEntryStatus.playing)
 
 
 def get_queue_mode(db: Session) -> QueueMode:
@@ -239,6 +254,12 @@ def list_history(
         page=page,
         page_size=page_size,
     )
+
+
+def clear_history(db: Session) -> None:
+    db.execute(delete(QueueEntry).where(QueueEntry.status.in_(TERMINAL_STATUSES)))
+    db.commit()
+    bump_revision(db)
 
 
 def requeue_from_history(db: Session, entry_id: str) -> QueueEntry:
@@ -548,35 +569,149 @@ def reject_entry(db: Session, entry_id: str, reason: str | None) -> QueueEntry:
     return entry
 
 
-def skip_or_advance(db: Session) -> StateResponse:
+def _active_queue_entry_read(
+    entry: QueueEntry, display_names: dict[str, str]
+) -> ActiveQueueEntryRead:
+    participant_id = entry.submitted_by_participant_id
+    return ActiveQueueEntryRead(
+        **QueueEntryRead.model_validate(entry).model_dump(),
+        submitted_by_display_name=(
+            display_names.get(participant_id) if participant_id else None
+        ),
+        source=entry.source,
+    )
+
+
+def list_active_queue(db: Session) -> ActiveQueueListResponse:
+    now_playing = get_now_playing(db)
+    queued_entries = get_all_queued(db)
+    participant_ids = {
+        entry.submitted_by_participant_id
+        for entry in ([now_playing] if now_playing else []) + queued_entries
+        if entry.submitted_by_participant_id
+    }
+    names_by_id = _participant_display_names(db, participant_ids)
+    return ActiveQueueListResponse(
+        now_playing=(
+            _active_queue_entry_read(now_playing, names_by_id) if now_playing else None
+        ),
+        queued=[_active_queue_entry_read(entry, names_by_id) for entry in queued_entries],
+    )
+
+
+def _finish_current_playing(db: Session) -> None:
+    runtime = get_or_create_runtime(db)
+    current = get_now_playing(db)
+    if current is None:
+        return
+    current.status = QueueEntryStatus.played
+    current.position = None
+    current.finished_at = datetime.now(timezone.utc)
+    runtime.now_playing_entry_id = None
+    db.commit()
+
+
+def _promote_next_or_idle(db: Session, *, allow_inject: bool = True) -> None:
     from .filler_reserve_service import maybe_inject_from_reserve
 
     runtime = get_or_create_runtime(db)
-    current = get_now_playing(db)
-    if current is not None:
-        current.status = QueueEntryStatus.played
-        current.position = None
-        current.finished_at = datetime.now(timezone.utc)
+    next_entry = _top_queued(db)
+    if next_entry is None and allow_inject:
+        maybe_inject_from_reserve(db)
+        next_entry = _top_queued(db)
+    if next_entry is not None:
+        emit_song_up_next(next_entry)
+        next_entry.status = QueueEntryStatus.playing
+        next_entry.position = None
+        runtime.now_playing_entry_id = next_entry.id
+        db.commit()
+    _recompute_positions(db)
+    if allow_inject:
+        _inject_visible_queue_if_needed(db)
+
+
+def clear_active_queue(db: Session) -> StateResponse:
+    runtime = get_or_create_runtime(db)
+    runtime.now_playing_entry_id = None
+    db.commit()
+    db.execute(
+        delete(QueueEntry).where(QueueEntry.status.in_(ACTIVE_QUEUE_STATUSES))
+    )
+    db.commit()
+    bump_revision(db)
+    return build_state_response(db)
+
+
+def delete_active_entry(db: Session, entry_id: str) -> StateResponse:
+    entry = db.get(QueueEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="queue entry not found")
+    if entry.status not in ACTIVE_QUEUE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="entry not active")
+
+    was_playing = entry.status == QueueEntryStatus.playing
+    runtime = get_or_create_runtime(db)
+    if was_playing:
         runtime.now_playing_entry_id = None
         db.commit()
-
-        next_entry = _top_queued(db)
-        if next_entry is None:
-            maybe_inject_from_reserve(db)
-            next_entry = _top_queued(db)
-        if next_entry is not None:
-            emit_song_up_next(next_entry)
-            next_entry.status = QueueEntryStatus.playing
-            next_entry.position = None
-            runtime.now_playing_entry_id = next_entry.id
-            db.commit()
+    db.delete(entry)
+    db.commit()
+    if was_playing:
+        _promote_next_or_idle(db, allow_inject=True)
+    else:
         _recompute_positions(db)
-        _inject_visible_queue_if_needed(db)
+    bump_revision(db)
+    return build_state_response(db)
+
+
+def force_play_entry(db: Session, entry_id: str) -> StateResponse:
+    entry = db.get(QueueEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="queue entry not found")
+    if entry.status == QueueEntryStatus.playing:
+        return build_state_response(db)
+    if entry.status != QueueEntryStatus.queued:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="invalid status")
+
+    _finish_current_playing(db)
+    runtime = get_or_create_runtime(db)
+    emit_song_up_next(entry)
+    entry.status = QueueEntryStatus.playing
+    entry.position = None
+    runtime.now_playing_entry_id = entry.id
+    db.commit()
+    _recompute_positions(db)
+    bump_revision(db)
+    return build_state_response(db)
+
+
+def set_entry_vote_count(db: Session, entry_id: str, vote_count: int) -> StateResponse:
+    entry = db.get(QueueEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="queue entry not found")
+    if entry.status not in ACTIVE_QUEUE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="entry not active")
+
+    entry.vote_count = vote_count
+    db.commit()
+    _recompute_positions(db)
+    bump_revision(db)
+    return build_state_response(db)
+
+
+def skip_or_advance(db: Session) -> StateResponse:
+    runtime = get_or_create_runtime(db)
+    current = get_now_playing(db)
+    if current is not None:
+        _finish_current_playing(db)
+        _promote_next_or_idle(db, allow_inject=True)
         bump_revision(db)
         return build_state_response(db)
 
     next_entry = _top_queued(db)
     if next_entry is None:
+        from .filler_reserve_service import maybe_inject_from_reserve
+
         maybe_inject_from_reserve(db)
         next_entry = _top_queued(db)
     if next_entry is None:

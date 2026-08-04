@@ -184,3 +184,109 @@ def test_requeue_duplicate_in_reserve_blocked(authed_client, db_session):
     response = authed_client.post(f"/api/queue/history/{entry.id}/requeue")
     assert response.status_code == 409
     assert response.json()["detail"] == "video already in queue"
+
+
+def test_clear_history_requires_operator(client, db_session):
+    _terminal_entry(db_session, video_id="dQw4w9WgXcQ", status=QueueEntryStatus.played)
+    assert client.delete("/api/queue/history").status_code == 401
+
+
+def test_clear_history_forbidden_for_participant(dev_participant_client, db_session):
+    _terminal_entry(db_session, video_id="dQw4w9WgXcQ", status=QueueEntryStatus.played)
+    assert dev_participant_client.delete("/api/queue/history").status_code == 401
+
+
+def test_clear_history_operator_success(authed_client, db_session, queued_entry, playing_entry):
+    played = _terminal_entry(
+        db_session, video_id="dQw4w9WgXcQ", status=QueueEntryStatus.played
+    )
+    rejected = _terminal_entry(
+        db_session, video_id="jNQXAC9IVRw", status=QueueEntryStatus.rejected
+    )
+    pending = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="9bZkp7q19f0",
+        title="Pending",
+        status=QueueEntryStatus.pending_review,
+        original_query="9bZkp7q19f0",
+        vote_count=0,
+    )
+    db_session.add(pending)
+    db_session.commit()
+
+    played_id = played.id
+    rejected_id = rejected.id
+
+    response = authed_client.delete("/api/queue/history")
+    assert response.status_code == 204
+
+    db_session.expire_all()
+    assert db_session.get(QueueEntry, played_id) is None
+    assert db_session.get(QueueEntry, rejected_id) is None
+    assert db_session.get(QueueEntry, queued_entry.id) is not None
+    assert db_session.get(QueueEntry, playing_entry.id) is not None
+    assert db_session.get(QueueEntry, pending.id) is not None
+
+    listed = authed_client.get("/api/queue/history")
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 0
+
+
+def test_clear_history_idempotent(authed_client, db_session):
+    _terminal_entry(db_session, video_id="dQw4w9WgXcQ", status=QueueEntryStatus.played)
+    assert authed_client.delete("/api/queue/history").status_code == 204
+    assert authed_client.delete("/api/queue/history").status_code == 204
+
+
+def test_clear_history_participant_submissions(
+    authed_client, dev_participant_client, db_session
+):
+    participant_id = dev_participant_client.get("/api/participant/me").json()["participant"]["id"]
+    played = _terminal_entry(
+        db_session,
+        video_id="dQw4w9WgXcQ",
+        status=QueueEntryStatus.played,
+        participant_id=participant_id,
+    )
+    queued = QueueEntry(
+        id=str(uuid4()),
+        youtube_video_id="jNQXAC9IVRw",
+        title="Still active",
+        status=QueueEntryStatus.queued,
+        original_query="jNQXAC9IVRw",
+        vote_count=0,
+        submitted_by_participant_id=participant_id,
+    )
+    db_session.add(queued)
+    db_session.commit()
+
+    played_id = played.id
+    queued_id = queued.id
+
+    assert authed_client.delete("/api/queue/history").status_code == 204
+
+    submissions = dev_participant_client.get("/api/participant/submissions")
+    assert submissions.status_code == 200
+    ids = {entry["id"] for entry in submissions.json()["entries"]}
+    assert played_id not in ids
+    assert queued_id in ids
+
+
+def test_clear_history_with_active_filter_deletes_all_terminal(authed_client, db_session):
+    _terminal_entry(
+        db_session, video_id="dQw4w9WgXcQ", status=QueueEntryStatus.played
+    )
+    _terminal_entry(
+        db_session, video_id="jNQXAC9IVRw", status=QueueEntryStatus.rejected
+    )
+
+    filtered = authed_client.get("/api/queue/history", params={"status": "played"})
+    assert filtered.json()["total"] == 1
+
+    assert authed_client.delete("/api/queue/history").status_code == 204
+
+    assert authed_client.get("/api/queue/history").json()["total"] == 0
+    assert (
+        authed_client.get("/api/queue/history", params={"status": "rejected"}).json()["total"]
+        == 0
+    )

@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import {
+  ActiveQueueListResponse,
   HistoryListResponse,
   PendingListResponse,
   QueueEntryRead,
@@ -51,10 +52,36 @@ export class QueueAdminService {
     );
   }
 
+  clearHistory(): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/queue/history`);
+  }
+
   operatorSubmit(youtubeUrlOrId: string, searchQuery?: string): Observable<QueueEntryRead> {
     return this.http.post<QueueEntryRead>(`${this.baseUrl}/queue/operator-submit`, {
       youtube_url_or_id: youtubeUrlOrId,
       search_query: searchQuery ?? null,
+    });
+  }
+
+  getActiveQueue(): Observable<ActiveQueueListResponse> {
+    return this.http.get<ActiveQueueListResponse>(`${this.baseUrl}/queue/active`);
+  }
+
+  clearActiveQueue(): Observable<StateResponse> {
+    return this.http.delete<StateResponse>(`${this.baseUrl}/queue/active`);
+  }
+
+  deleteActiveEntry(id: string): Observable<StateResponse> {
+    return this.http.delete<StateResponse>(`${this.baseUrl}/queue/active/${id}`);
+  }
+
+  playNow(id: string): Observable<StateResponse> {
+    return this.http.post<StateResponse>(`${this.baseUrl}/queue/${id}/play-now`, {});
+  }
+
+  setVoteCount(id: string, voteCount: number): Observable<StateResponse> {
+    return this.http.patch<StateResponse>(`${this.baseUrl}/queue/${id}/vote-count`, {
+      vote_count: voteCount,
     });
   }
 }

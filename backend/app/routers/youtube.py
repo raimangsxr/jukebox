@@ -39,10 +39,12 @@ def search_youtube(
         results = search_videos(q, db)
         return SearchResponse(results=results)
     participant = get_current_participant(request, db)
-    if not search_rate_limiter.check_and_record(participant.id):
+    if not search_rate_limiter.can_search(db, participant.id):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="search rate limit exceeded",
         )
     results = search_videos(q, db)
+    search_rate_limiter.record_search(db, participant.id)
+    db.commit()
     return SearchResponse(results=results)
