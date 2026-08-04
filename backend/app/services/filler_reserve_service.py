@@ -131,6 +131,7 @@ def add_to_reserve(
     db.add(entry)
     db.commit()
     db.refresh(entry)
+    _maybe_inject_after_reserve_mutation(db)
     return entry
 
 
@@ -162,7 +163,9 @@ def reorder_reserve(db: Session, ordered_ids: list[str]) -> list[FillerReserveEn
     for index, entry_id in enumerate(ordered_ids, start=1):
         by_id[entry_id].position = index
     db.commit()
-    return list_reserve_reads(db)
+    entries = list_reserve_reads(db)
+    _maybe_inject_after_reserve_mutation(db)
+    return entries
 
 
 def _renumber_reserve_positions(db: Session) -> None:
@@ -213,46 +216,74 @@ def transfer_to_queue(
         db.delete(reserve_entry)
         db.flush()
         try:
-            _enqueue_entry(db, entry)
+            _enqueue_entry(db, entry, auto_start=False)
         except Exception:
             db.rollback()
             raise
         created.append(entry)
     _renumber_reserve_positions(db)
+    from .queue_service import _maybe_auto_start_playback
+
+    _maybe_auto_start_playback(db)
     bump_revision(db)
     return created
 
 
-def inject_next_if_idle(db: Session) -> QueueEntry | None:
+def maybe_inject_from_reserve(db: Session) -> QueueEntry | None:
     config = db.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
     if config is None or not config.filler_auto_inject_enabled:
         return None
 
     from .queue_service import _count_queued
-    from .state_service import get_now_playing
 
-    if get_now_playing(db) is not None:
-        return None
     if _count_queued(db) > 0:
         return None
 
-    reserve_entry = db.execute(
-        select(FillerReserveEntry)
-        .order_by(FillerReserveEntry.position.asc())
-        .limit(1)
-    ).scalar_one_or_none()
-    if reserve_entry is None:
-        return None
+    changed = False
+    injected: QueueEntry | None = None
 
-    entry = _create_queue_entry_from_reserve(
-        db, reserve_entry, source=QueueEntrySource.auto_inject
-    )
-    db.delete(reserve_entry)
-    db.flush()
-    _renumber_reserve_positions(db)
-    _enqueue_entry(db, entry)
-    bump_revision(db)
-    return entry
+    while True:
+        reserve_entry = db.execute(
+            select(FillerReserveEntry)
+            .order_by(FillerReserveEntry.position.asc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if reserve_entry is None:
+            break
+
+        if _has_active_duplicate(db, reserve_entry.youtube_video_id):
+            db.delete(reserve_entry)
+            db.flush()
+            _renumber_reserve_positions(db)
+            changed = True
+            continue
+
+        entry = _create_queue_entry_from_reserve(
+            db, reserve_entry, source=QueueEntrySource.auto_inject
+        )
+        db.delete(reserve_entry)
+        db.flush()
+        _renumber_reserve_positions(db)
+        _enqueue_entry(db, entry)
+        changed = True
+        injected = entry
+        break
+
+    if changed:
+        bump_revision(db)
+    return injected
+
+
+# Backward-compatible alias for idle inject call sites.
+inject_next_if_idle = maybe_inject_from_reserve
+
+
+def _maybe_inject_after_reserve_mutation(db: Session) -> None:
+    from .queue_service import _count_queued
+    from .state_service import get_now_playing
+
+    if get_now_playing(db) is not None and _count_queued(db) == 0:
+        maybe_inject_from_reserve(db)
 
 
 def export_reserve_csv(db: Session) -> bytes:
@@ -313,7 +344,9 @@ def append_reserve_entries(
         position += 1
     db.commit()
     bump_revision(db)
-    return list_reserve_reads(db)
+    entries = list_reserve_reads(db)
+    _maybe_inject_after_reserve_mutation(db)
+    return entries
 
 
 def _empty_batch_validation(

@@ -369,7 +369,7 @@ def _count_participant_queued(db: Session, participant_id: str) -> int:
     )
 
 
-def _enqueue_entry(db: Session, entry: QueueEntry) -> QueueEntry:
+def _enqueue_entry(db: Session, entry: QueueEntry, *, auto_start: bool = True) -> QueueEntry:
     if _count_queued(db) >= MAX_QUEUED_ENTRIES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -388,8 +388,16 @@ def _enqueue_entry(db: Session, entry: QueueEntry) -> QueueEntry:
     db.refresh(entry)
     _recompute_positions(db)
     emit_song_approved(entry)
-    _maybe_auto_start_playback(db)
+    if auto_start:
+        _maybe_auto_start_playback(db)
     return entry
+
+
+def _inject_visible_queue_if_needed(db: Session) -> None:
+    from .filler_reserve_service import maybe_inject_from_reserve
+
+    if get_now_playing(db) is not None and _count_queued(db) == 0:
+        maybe_inject_from_reserve(db)
 
 
 def _maybe_auto_start_playback(db: Session) -> None:
@@ -397,9 +405,9 @@ def _maybe_auto_start_playback(db: Session) -> None:
         return
     next_entry = _top_queued(db)
     if next_entry is None:
-        from .filler_reserve_service import inject_next_if_idle
+        from .filler_reserve_service import maybe_inject_from_reserve
 
-        inject_next_if_idle(db)
+        maybe_inject_from_reserve(db)
         next_entry = _top_queued(db)
     if next_entry is None:
         return
@@ -410,6 +418,7 @@ def _maybe_auto_start_playback(db: Session) -> None:
     runtime.now_playing_entry_id = next_entry.id
     db.commit()
     _recompute_positions(db)
+    _inject_visible_queue_if_needed(db)
 
 
 def submit_as_participant(
@@ -540,7 +549,7 @@ def reject_entry(db: Session, entry_id: str, reason: str | None) -> QueueEntry:
 
 
 def skip_or_advance(db: Session) -> StateResponse:
-    from .filler_reserve_service import inject_next_if_idle
+    from .filler_reserve_service import maybe_inject_from_reserve
 
     runtime = get_or_create_runtime(db)
     current = get_now_playing(db)
@@ -553,7 +562,7 @@ def skip_or_advance(db: Session) -> StateResponse:
 
         next_entry = _top_queued(db)
         if next_entry is None:
-            inject_next_if_idle(db)
+            maybe_inject_from_reserve(db)
             next_entry = _top_queued(db)
         if next_entry is not None:
             emit_song_up_next(next_entry)
@@ -562,12 +571,13 @@ def skip_or_advance(db: Session) -> StateResponse:
             runtime.now_playing_entry_id = next_entry.id
             db.commit()
         _recompute_positions(db)
+        _inject_visible_queue_if_needed(db)
         bump_revision(db)
         return build_state_response(db)
 
     next_entry = _top_queued(db)
     if next_entry is None:
-        inject_next_if_idle(db)
+        maybe_inject_from_reserve(db)
         next_entry = _top_queued(db)
     if next_entry is None:
         raise HTTPException(

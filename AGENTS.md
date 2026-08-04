@@ -12,7 +12,7 @@
 
 ## Active SDD work
 
-No active change. Last completed: **019-filler-reserve-playlist** (implemented) — playlist import, CSV append, Vaciar clear, shared batch preview with skip counts.
+No active change. Last completed: **020-fill-queue-from-reserve** (implemented) — auto-inject filler when queued empty while playing; duplicate skip removes reserve row; event-driven triggers.
 
 To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 

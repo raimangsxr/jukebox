@@ -64,9 +64,14 @@ def update_filler_auto_inject(
     db: Session = Depends(get_db),
 ) -> EventConfigRead:
     config = _get_config(db)
+    was_enabled = config.filler_auto_inject_enabled
     config.filler_auto_inject_enabled = payload.filler_auto_inject_enabled
     db.commit()
     db.refresh(config)
+    if not was_enabled and payload.filler_auto_inject_enabled:
+        from ..services.filler_reserve_service import maybe_inject_from_reserve
+
+        maybe_inject_from_reserve(db)
     bump_revision(db)
     return EventConfigRead.model_validate(config)
 
