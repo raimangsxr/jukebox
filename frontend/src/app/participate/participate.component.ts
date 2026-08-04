@@ -16,6 +16,7 @@ import { SearchResultItem } from '../models/youtube-search';
 import { ParticipantStateService } from '../services/participant-state.service';
 import { ParticipantService } from '../services/participant.service';
 import { LiveStatusComponent } from '../components/live-status.component';
+import { CollapsibleSectionComponent } from '../components/collapsible-section/collapsible-section.component';
 import { LiveConnectionStatus } from '../services/live-connection';
 import { environment } from '../../environments/environment';
 
@@ -28,10 +29,13 @@ import {
   nextActivePathOnUrlEdit,
   resolveActivePathOnUrlFocus
 } from './participate-submit.util';
+import { ParticipatePanelId, PARTICIPATE_PANEL_DEFAULTS } from './participate-panels.util';
 import {
   voteLimitExceededMessage,
   votesRemainingLabel,
+  searchesRemainingLabel,
 } from '../participant-limits.util';
+import { secondsUntil } from '../limit-countdown.util';
 
 const STATUS_LABELS: Record<string, string> = {
   pending_review: 'Pendiente de revisión',
@@ -43,10 +47,13 @@ const STATUS_LABELS: Record<string, string> = {
 
 const RULES_ACCEPTED_KEY = 'jukebox.participantRulesAccepted';
 
+export type { ParticipatePanelId };
+export { PARTICIPATE_PANEL_DEFAULTS };
+
 @Component({
   selector: 'app-participate',
   standalone: true,
-  imports: [FormsModule, NotificationToastComponent, LiveStatusComponent],
+  imports: [FormsModule, NotificationToastComponent, LiveStatusComponent, CollapsibleSectionComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './participate.component.html',
   styleUrl: './participate.component.css'
@@ -86,9 +93,20 @@ export class ParticipateComponent implements OnInit, OnDestroy {
   activePath: SubmitActivePath = null;
   lastSearchQuery = '';
 
+  readonly panelExpanded: Record<ParticipatePanelId, boolean> = { ...PARTICIPATE_PANEL_DEFAULTS };
+
   private stateSub: Subscription | null = null;
   private submissionsSub: Subscription | null = null;
   private connectionSub: Subscription | null = null;
+  private countdownTickInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly onVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible' && this.authenticated && this.state) {
+      void this.stateService.refresh().then(() => {
+        this.state = this.stateService.snapshot;
+        this.cdr.markForCheck();
+      });
+    }
+  };
 
   ngOnInit(): void {
     const params = new URLSearchParams(window.location.search);
@@ -118,6 +136,8 @@ export class ParticipateComponent implements OnInit, OnDestroy {
     this.stateSub?.unsubscribe();
     this.submissionsSub?.unsubscribe();
     this.connectionSub?.unsubscribe();
+    this.stopCountdownTick();
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.stateService.stop();
   }
 
@@ -170,6 +190,8 @@ export class ParticipateComponent implements OnInit, OnDestroy {
           this.connectionStatus = status;
           this.cdr.markForCheck();
         });
+        this.startCountdownTick();
+        document.addEventListener('visibilitychange', this.onVisibilityChange);
       } catch {
         this.authenticated = false;
         this.participant = null;
@@ -258,6 +280,8 @@ export class ParticipateComponent implements OnInit, OnDestroy {
         this.searchMessage =
           'No hay resultados. Prueba otra búsqueda o pega un enlace.';
       }
+      await this.stateService.refresh();
+      this.state = this.stateService.snapshot;
     } catch (err: unknown) {
       const detail = (err as { error?: { detail?: string } })?.error?.detail;
       this.searchMessage = this.participantService.mapSearchError(
@@ -361,7 +385,57 @@ export class ParticipateComponent implements OnInit, OnDestroy {
   votesRemainingLabel(): string {
     const limits = this.resolvedLimits();
     const remaining = this.state?.votes_remaining ?? limits.max_votes_10_minutes;
-    return votesRemainingLabel(remaining, limits.max_votes_10_minutes);
+    return votesRemainingLabel(
+      remaining,
+      limits.max_votes_10_minutes,
+      this.state?.votes_quota_reset_at,
+      Date.now()
+    );
+  }
+
+  searchesRemainingLabel(): string {
+    const limits = this.resolvedLimits();
+    const remaining =
+      this.state?.searches_remaining ?? limits.max_searches_10_minutes;
+    return searchesRemainingLabel(
+      remaining,
+      limits.max_searches_10_minutes,
+      this.state?.searches_quota_reset_at,
+      Date.now()
+    );
+  }
+
+  private startCountdownTick(): void {
+    this.stopCountdownTick();
+    this.countdownTickInterval = setInterval(() => {
+      const current = this.state;
+      if (!current) {
+        return;
+      }
+      const votesExpired =
+        current.votes_quota_reset_at &&
+        secondsUntil(current.votes_quota_reset_at) <= 0;
+      const searchesExpired =
+        current.searches_quota_reset_at &&
+        secondsUntil(current.searches_quota_reset_at) <= 0;
+      if (votesExpired || searchesExpired) {
+        void this.stateService.refresh().then(() => {
+          this.state = this.stateService.snapshot;
+          this.cdr.markForCheck();
+        });
+        return;
+      }
+      if (current.votes_quota_reset_at || current.searches_quota_reset_at) {
+        this.cdr.markForCheck();
+      }
+    }, 1000);
+  }
+
+  private stopCountdownTick(): void {
+    if (this.countdownTickInterval !== null) {
+      clearInterval(this.countdownTickInterval);
+      this.countdownTickInterval = null;
+    }
   }
 
   private resolvedLimits(): Pick<
@@ -383,6 +457,11 @@ export class ParticipateComponent implements OnInit, OnDestroy {
 
   statusLabel(status: string): string {
     return STATUS_LABELS[status] ?? status;
+  }
+
+  setPanelExpanded(id: ParticipatePanelId, expanded: boolean): void {
+    this.panelExpanded[id] = expanded;
+    this.cdr.markForCheck();
   }
 
   isSearchSectionActive(): boolean {

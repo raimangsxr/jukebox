@@ -2,6 +2,24 @@
   overflow-x: hidden;
 }
 
+.admin-panels app-collapsible-section {
+  display: block;
+}
+
+.admin-queue-table {
+  max-width: 100%;
+}
+
+.admin-queue-table th:first-child,
+.admin-queue-table td:first-child {
+  width: 34%;
+}
+
+.admin-queue-table th:nth-child(4),
+.admin-queue-table td:nth-child(4) {
+  width: 30%;
+}
+
 .usage-status {
   display: inline-block;
   border-radius: 9999px;

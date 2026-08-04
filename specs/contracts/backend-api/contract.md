@@ -66,7 +66,7 @@ Ambiguous subscribers default to participant scope (least privilege). This repla
 
 No `notification` on reject, vote reorder, or entries without `submitted_by_participant_id`.
 
-`GET /api/participant/state` returns `ParticipantStateResponse` (all `queued` entries, `votes_remaining`, `max_pending_submissions`, `max_searches_10_minutes`, `max_votes_10_minutes`). SSE does not include participant limit fields; clients merge per participant state snapshot.
+`GET /api/participant/state` returns `ParticipantStateResponse` (all `queued` entries, `votes_remaining`, `searches_remaining`, `votes_quota_reset_at`, `searches_quota_reset_at`, `max_pending_submissions`, `max_searches_10_minutes`, `max_votes_10_minutes`). SSE does not include participant limit fields; clients call `GET /api/participant/state` via `refresh()` on every participant SSE `state` event (multi-tab sync), plus vote/search responses, poll fallback, and client countdown expiry at `00:00`.
 
 ## Google OAuth (participant, 006)
 
@@ -111,12 +111,31 @@ Participant session MUST NOT access operator routes (e.g. `POST /api/queue/skip`
 | POST | `/api/queue/{id}/approve` | session | 200 `QueueEntryRead` |
 | POST | `/api/queue/{id}/reject` | session | 200 `QueueEntryRead` |
 | POST | `/api/queue/skip` | session | 200 `StateResponse` |
+| GET | `/api/queue/active` | operator session | 200 `ActiveQueueListResponse` |
+| DELETE | `/api/queue/active` | operator session | 200 `StateResponse` |
+| DELETE | `/api/queue/active/{id}` | operator session | 200 `StateResponse` |
+| POST | `/api/queue/{id}/play-now` | operator session | 200 `StateResponse` |
+| PATCH | `/api/queue/{id}/vote-count` | operator session | 200 `StateResponse` |
 | POST | `/api/queue/dev-submit` | session (if enabled) | 201 `QueueEntryRead` |
 | POST | `/api/queue/submit` | participant | 201 `QueueEntryRead` |
 
 `POST /api/queue/submit` body: `{ "youtube_url_or_id": string, "search_query"?: string }`. Creates `pending_review` with `submitted_by_participant_id`; bumps `revision`. When `search_query` is non-empty after trim, `original_query` = `search:{search_query}`; otherwise stores URL/id string (006).
 
 `PendingListResponse.entries[]` uses `PendingQueueEntryRead`: `QueueEntryRead` plus `submitted_by_display_name` (participant display name when linked). `QueueEntryRead.duration_sec` is populated on submit via YouTube Data API when `JUKEBOX_YOUTUBE_API_KEYS` is configured; otherwise `null`.
+
+### Active queue control (024)
+
+`GET /api/queue/active` returns full active list (not kiosk-limited): `now_playing` + all `queued` entries as `ActiveQueueEntryRead` (`QueueEntryRead` + `submitted_by_display_name`, `source`).
+
+`DELETE /api/queue/active` permanently deletes all `queued` and `playing` rows; clears `now_playing`; does **not** auto-inject filler; `bump_revision` + SSE `state`. Idempotent when empty.
+
+`DELETE /api/queue/active/{id}` permanently deletes one active entry (votes CASCADE). If `playing` and other `queued` exist → promote next (skip tail). Not in historial terminal.
+
+`POST /api/queue/{id}/play-now` promotes `queued` entry to `playing`; if another was `playing` → mark `played` (historial), not delete. No-op if target already `playing`. 409 invalid status.
+
+`PATCH /api/queue/{id}/vote-count` body `{ "vote_count": int ≥ 0 }`; sets denormalized count, reorders `queued`; does not interrupt current `playing`; no participant vote-limit.
+
+Participant session → 401 on all active-queue routes above.
 
 ## YouTube search (008)
 
@@ -181,7 +200,7 @@ API returns stable English `detail` strings; frontend maps to Spanish.
 
 Participants may submit while they already have songs in `queued` or `playing`; only the pending limit and duplicate-video rules apply.
 
-`JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` (default `2`, min `1`) controls the per-participant `pending_review` cap. `JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT` (default `10`, min `1`) and `JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT` (default `2`, min `1`) control rolling 10-minute search and vote limits. `GET /api/participant/state` exposes all three maxima for client UX.
+`JUKEBOX_MAX_PENDING_SUBMISSIONS_PER_PARTICIPANT` (default `2`, min `1`) controls the per-participant `pending_review` cap. `JUKEBOX_MAX_SEARCHS_10MINUTES_PER_PARTICIPANT` (default `10`, min `1`) and `JUKEBOX_MAX_VOTES_10MINUTES_PER_PARTICIPANT` (default `2`, min `1`) control fixed 10-minute vote and search windows per participant. Window starts on **first consumption at full quota**; `votes_quota_reset_at` / `searches_quota_reset_at` on `participants` anchor the countdown; participant searches persist in `participant_searches`. `GET /api/participant/state` exposes remaining counts, reset timestamps, and all three maxima for client UX.
 
 `POST /api/queue/skip`: advance when `playing`; start when idle + `queued`; 409 `nothing to advance` when empty.
 
@@ -221,6 +240,7 @@ Participants may submit while they already have songs in `queued` or `playing`; 
 | `GET /api/auth/google/callback` | `GET /api/state` | `GET /api/participant/submissions` | |
 | `POST /api/participant/dev-auth` (when enabled) | `POST /api/queue/*` | `POST /api/queue/submit` | |
 | `GET /api/youtube/search/config` | `GET /api/youtube/api-keys/usage` | `GET /api/youtube/search` | |
+| | `GET /api/admin/stats` | | |
 
 `backend/tests/test_auth_policy.py` asserts the canonical public route list.
 
@@ -309,6 +329,57 @@ Operates on the singleton `event_config` row (`name`, `subtitle`, `app_height_px
 
 Duplicate video rule unchanged (`409 video already in queue`). Queue full (`409 queue is full`) applies when enqueueing in free mode. Moderation approve/reject unchanged for legacy `pending_review` rows after mode switch.
 
+## Admin statistics (023)
+
+### `GET /api/admin/stats`
+
+| Method | Path | Auth | Response |
+|--------|------|------|----------|
+| GET | `/api/admin/stats` | operator | 200 `AdminStatsResponse` |
+
+Participant or unauthenticated session → 401. On-demand only (panel expand or manual refresh); no SSE stats payload.
+
+### `AdminStatsResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `participants_active_count` | int | Unique participants with ≥1 submission or ≥1 vote |
+| `total_submissions` | int | Participant-attributed queue entries (all statuses) |
+| `total_votes_cast` | int | Total vote rows |
+| `distinct_voted_songs_count` | int | Distinct YouTube videos with aggregated `vote_count` > 0 |
+| `queue_counts` | `QueueStatusCounts` | Per-status entry counts |
+| `top_submitters` | `ParticipantRankingItem[]` | ≤10 by submission count DESC |
+| `top_voters` | `ParticipantRankingItem[]` | ≤10 by votes cast DESC |
+| `top_songs` | `SongRankingItem[]` | ≤10 by aggregated votes DESC |
+
+### `QueueStatusCounts`
+
+| Field | Type |
+|-------|------|
+| `pending_review` | int |
+| `queued` | int |
+| `playing` | int |
+| `played` | int |
+| `rejected` | int |
+
+### `ParticipantRankingItem`
+
+| Field | Type |
+|-------|------|
+| `participant_id` | string |
+| `display_name` | string | `display_name`, else email local-part, else `Participante` |
+| `count` | int |
+
+### `SongRankingItem`
+
+| Field | Type |
+|-------|------|
+| `youtube_video_id` | string |
+| `title` | string |
+| `vote_count` | int |
+
+Tie-break at rank 10: alphabetical by `display_name` or `title`. After `DELETE /api/queue/history`, aggregates reflect surviving rows only. Operator submissions (`submitted_by_participant_id IS NULL`) excluded from submitter rankings.
+
 ## Queue history and filler reserve (017)
 
 ### Schema (Alembic 0010)
@@ -331,6 +402,9 @@ Table `filler_reserve_entries` (max 50, unique `youtube_video_id`). `event_confi
 |--------|------|------|----------|
 | GET | `/api/queue/history` | operator | 200 `HistoryListResponse` |
 | POST | `/api/queue/history/{id}/requeue` | operator | 201 `QueueEntryRead` |
+| DELETE | `/api/queue/history` | operator | 204 No Content |
+
+`DELETE /api/queue/history`: permanently deletes all `played` and `rejected` rows; ignores UI filter; does not touch active queue or filler reserve; `bump_revision` + SSE `state`; idempotent (empty → 204). Participant → 401.
 
 Query: `status` (`played`|`rejected`), `page`, `page_size` (max 100). Requeue always creates `queued` (never `pending_review`); `source=operator_requeue`; priority `normal` if historical participant submit, else `low`. Participant → 401.
 
@@ -510,6 +584,7 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - `backend/tests/test_youtube_search.py` — search config, auth, rate limits, key pool failover
 - `backend/tests/test_youtube_api_key_usage.py` — per-key usage, SSE `api_key_usage`, auth, persistence
 - `backend/tests/test_queue_approval_mode.py` — queue mode moderated/free, mode switch, caps, duplicates
+- `backend/tests/test_admin_stats.py` — admin stats aggregates, rankings, queue counts, auth, post-clear-history
 
 ## Change history
 
@@ -527,3 +602,6 @@ FastAPI default: `{"detail": "..."}` or validation array for 422.
 - **018-filler-reserve-csv** — filler reserve CSV export/import (validate → confirm → atomic replace); `GET /api/filler-reserve/export`, `POST /api/filler-reserve/import/validate`, `POST /api/filler-reserve/import`; no migration
 - **019-filler-reserve-playlist** — CSV import append (not replace); playlist validate/commit; `DELETE /api/filler-reserve` clear; `FillerReserveBatchValidation` with `skipped_*` counts; no migration
 - **020-fill-queue-from-reserve** — auto-inject when `queued` empty even while `playing`; skip/remove active duplicates from reserve; event-driven triggers including toggle-on; no migration
+- **021-collapsible-panels-reset** — collapsible Admin/participant panels; participate reorder; `DELETE /api/queue/history` clear terminal history; no migration
+- **023-admin-stats-panel** — `GET /api/admin/stats`; participation totals, queue status counts, top-10 submitters/voters/songs; no migration
+- **024-admin-queue-control** — `GET/DELETE /api/queue/active`, `play-now`, `vote-count`, delete active entry; hard delete on vaciar/eliminar; no migration

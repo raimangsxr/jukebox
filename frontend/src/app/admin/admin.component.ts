@@ -17,7 +17,7 @@ import { environment } from '../../environments/environment';
 import { ApiKeyUsageListResponse } from '../models/youtube-api-key-usage';
 import { EventConfigRead, QueueMode } from '../models/event-config';
 import { AuthService } from '../services/auth.service';
-import { HistoryQueueEntryRead, PendingQueueEntryRead } from '../models/jukebox-state';
+import { HistoryQueueEntryRead, PendingQueueEntryRead, ActiveQueueEntryRead, ActiveQueueListResponse } from '../models/jukebox-state';
 import { DisplayStateService } from '../services/display-state.service';
 import { EventConfigService } from '../services/event-config.service';
 import {
@@ -26,9 +26,26 @@ import {
   FillerReserveService,
 } from '../services/filler-reserve.service';
 import { QueueAdminService } from '../services/queue-admin.service';
+import { AdminStatsService } from '../services/admin-stats.service';
+import { AdminStatsResponse } from '../models/admin-stats';
+import {
+  activeQueueEmptyCopy,
+  parseVoteCountInput,
+  queueSourceLabel,
+  queueStatusLabel,
+} from './admin-queue.util';
+import {
+  emptyRankingCopy,
+  emptySummaryCopy,
+  participantDisplayLabel,
+  shouldFetchStatsOnPanelChange,
+} from './admin-stats.util';
 import { PlaybackAudioMode } from '../models/playback-status';
 import { LiveStatusComponent } from '../components/live-status.component';
+import { CollapsibleSectionComponent } from '../components/collapsible-section/collapsible-section.component';
 import { LiveConnectionStatus } from '../services/live-connection';
+
+type AdminPanelId = 'moderation' | 'queue' | 'history' | 'stats' | 'reserve' | 'apiKeys' | 'event' | 'tokens';
 
 interface ApiTokenRead {
   id: string;
@@ -53,7 +70,7 @@ interface TokenListResponse {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule, LiveStatusComponent],
+  imports: [CommonModule, FormsModule, LiveStatusComponent, CollapsibleSectionComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css'
@@ -65,6 +82,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly queueAdmin = inject(QueueAdminService);
+  private readonly adminStats = inject(AdminStatsService);
   private readonly fillerReserve = inject(FillerReserveService);
   private readonly displayState = inject(DisplayStateService);
   private readonly eventConfigService = inject(EventConfigService);
@@ -77,6 +95,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   revealedToken: ApiTokenWithSecret | null = null;
   tokenError: string | null = null;
   moderationError: string | null = null;
+  queuePanelError: string | null = null;
   copied = false;
   loggingOut = false;
   playbackBusy = false;
@@ -99,6 +118,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   historyEntries: HistoryQueueEntryRead[] = [];
   historyTotal = 0;
+  historyTotalAll = 0;
   historyPage = 1;
   historyPageSize = 25;
   historyStatusFilter: '' | 'played' | 'rejected' = '';
@@ -106,6 +126,39 @@ export class AdminComponent implements OnInit, OnDestroy {
   historyError: string | null = null;
   pendingRequeueId: string | null = null;
   requeueBusy = false;
+  pendingClearHistory = false;
+  clearHistoryBusy = false;
+
+  activeQueue: ActiveQueueListResponse | null = null;
+  activeQueueLoading = false;
+  activeQueueError: string | null = null;
+  pendingClearActiveQueue = false;
+  clearActiveQueueBusy = false;
+  pendingDeleteActiveId: string | null = null;
+  deleteActiveBusy = false;
+  pendingVoteEditEntry: ActiveQueueEntryRead | null = null;
+  voteEditInput = '';
+  voteEditError: string | null = null;
+  voteEditBusy = false;
+  private readonly activeQueueRowBusy = new Set<string>();
+  readonly activeQueueEmptyLabel = activeQueueEmptyCopy();
+
+  statsSnapshot: AdminStatsResponse | null = null;
+  statsLoading = false;
+  statsError: string | null = null;
+  readonly rankingEmptyLabel = emptyRankingCopy();
+  readonly summaryEmptyLabel = emptySummaryCopy();
+
+  readonly panelExpanded: Record<AdminPanelId, boolean> = {
+    moderation: true,
+    queue: false,
+    history: false,
+    stats: false,
+    reserve: false,
+    apiKeys: false,
+    event: false,
+    tokens: false,
+  };
 
   reserveEntries: FillerReserveEntryRead[] = [];
   reserveLoading = false;
@@ -130,10 +183,16 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.refreshApiKeyUsage();
     this.loadEventConfig();
     this.refreshHistory();
+    this.refreshHistoryTotalAll();
     this.refreshReserve();
     void this.displayState.start();
     this.stateSubscription = this.displayState.state$.subscribe(() => {
       this.refreshPending();
+      this.refreshHistory();
+      this.refreshHistoryTotalAll();
+      if (this.panelExpanded.queue) {
+        this.loadActiveQueue();
+      }
       this.cdr.markForCheck();
     });
     this.apiKeyUsageSubscription = this.displayState.apiKeyUsage$.subscribe(usage => {
@@ -311,15 +370,19 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   advancePlayback(): void {
     this.playbackBusy = true;
+    this.queuePanelError = null;
     this.queueAdmin.skipOrStart().subscribe({
       next: state => {
         this.playbackBusy = false;
         this.displayState.applyState(state);
+        if (this.panelExpanded.queue) {
+          this.loadActiveQueue();
+        }
         this.cdr.markForCheck();
       },
       error: err => {
         this.playbackBusy = false;
-        this.moderationError = this.mapQueueError(err);
+        this.queuePanelError = this.mapQueueControlError(err);
         this.cdr.markForCheck();
       }
     });
@@ -410,6 +473,269 @@ export class AdminComponent implements OnInit, OnDestroy {
     return mode === 'free' ? 'Libre' : 'Moderado';
   }
 
+  setPanelExpanded(id: AdminPanelId, expanded: boolean): void {
+    this.panelExpanded[id] = expanded;
+    if (id === 'queue' && expanded) {
+      this.loadActiveQueue();
+    }
+    if (shouldFetchStatsOnPanelChange(id, expanded)) {
+      this.loadStats();
+    }
+    this.cdr.markForCheck();
+  }
+
+  loadActiveQueue(): void {
+    this.activeQueueLoading = true;
+    this.activeQueueError = null;
+    this.queueAdmin.getActiveQueue().subscribe({
+      next: res => {
+        this.activeQueue = res;
+        this.activeQueueLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.activeQueueLoading = false;
+        this.activeQueueError = 'No se pudo cargar la cola de reproducción.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  activeQueueCount(): number {
+    if (!this.activeQueue) {
+      return 0;
+    }
+    return (this.activeQueue.now_playing ? 1 : 0) + this.activeQueue.queued.length;
+  }
+
+  isActiveQueueEmpty(): boolean {
+    return this.activeQueueCount() === 0;
+  }
+
+  queueBadge(): string {
+    const count = this.activeQueueCount();
+    return `${count} en cola`;
+  }
+
+  activeQueueRows(): ActiveQueueEntryRead[] {
+    if (!this.activeQueue) {
+      return [];
+    }
+    const rows: ActiveQueueEntryRead[] = [];
+    if (this.activeQueue.now_playing) {
+      rows.push(this.activeQueue.now_playing);
+    }
+    rows.push(...this.activeQueue.queued);
+    return rows;
+  }
+
+  isNowPlayingEntry(entry: ActiveQueueEntryRead): boolean {
+    return this.activeQueue?.now_playing?.id === entry.id;
+  }
+
+  isActiveQueueRowBusy(id: string): boolean {
+    return this.activeQueueRowBusy.has(id);
+  }
+
+  activeQueueSubmitterLabel(entry: ActiveQueueEntryRead): string {
+    return entry.submitted_by_display_name?.trim() || '—';
+  }
+
+  activeQueueSourceLabel(source: string): string {
+    return queueSourceLabel(source);
+  }
+
+  activeQueueStatusLabel(entry: ActiveQueueEntryRead): string {
+    return queueStatusLabel(entry.status, this.isNowPlayingEntry(entry));
+  }
+
+  priorityLabel(priority: 'normal' | 'low' | undefined): string {
+    return priority === 'low' ? 'Baja' : 'Normal';
+  }
+
+  formatCreatedAt(value: string | undefined): string {
+    return this.formatResetAt(value);
+  }
+
+  requestClearActiveQueue(): void {
+    if (this.isActiveQueueEmpty() || this.clearActiveQueueBusy) {
+      return;
+    }
+    this.pendingClearActiveQueue = true;
+    this.cdr.markForCheck();
+  }
+
+  cancelClearActiveQueue(): void {
+    this.pendingClearActiveQueue = false;
+    this.cdr.markForCheck();
+  }
+
+  confirmClearActiveQueue(): void {
+    if (this.clearActiveQueueBusy) {
+      return;
+    }
+    this.clearActiveQueueBusy = true;
+    this.queuePanelError = null;
+    this.queueAdmin.clearActiveQueue().subscribe({
+      next: state => {
+        this.clearActiveQueueBusy = false;
+        this.pendingClearActiveQueue = false;
+        this.displayState.applyState(state);
+        this.activeQueue = { now_playing: null, queued: [] };
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.clearActiveQueueBusy = false;
+        this.pendingClearActiveQueue = false;
+        this.queuePanelError = this.mapQueueControlError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  requestDeleteActive(entryId: string): void {
+    this.pendingDeleteActiveId = entryId;
+    this.cdr.markForCheck();
+  }
+
+  cancelDeleteActive(): void {
+    this.pendingDeleteActiveId = null;
+    this.cdr.markForCheck();
+  }
+
+  confirmDeleteActive(): void {
+    const entryId = this.pendingDeleteActiveId;
+    if (!entryId || this.deleteActiveBusy) {
+      return;
+    }
+    this.deleteActiveBusy = true;
+    this.queuePanelError = null;
+    this.queueAdmin.deleteActiveEntry(entryId).subscribe({
+      next: state => {
+        this.deleteActiveBusy = false;
+        this.pendingDeleteActiveId = null;
+        this.displayState.applyState(state);
+        this.loadActiveQueue();
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.deleteActiveBusy = false;
+        this.pendingDeleteActiveId = null;
+        this.queuePanelError = this.mapQueueControlError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  forcePlayEntry(entryId: string): void {
+    if (this.isActiveQueueRowBusy(entryId)) {
+      return;
+    }
+    this.activeQueueRowBusy.add(entryId);
+    this.queuePanelError = null;
+    this.queueAdmin.playNow(entryId).subscribe({
+      next: state => {
+        this.activeQueueRowBusy.delete(entryId);
+        this.displayState.applyState(state);
+        this.loadActiveQueue();
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.activeQueueRowBusy.delete(entryId);
+        this.queuePanelError = this.mapQueueControlError(err);
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  requestVoteEdit(entry: ActiveQueueEntryRead): void {
+    this.pendingVoteEditEntry = entry;
+    this.voteEditInput = String(entry.vote_count);
+    this.voteEditError = null;
+    this.cdr.markForCheck();
+  }
+
+  cancelVoteEdit(): void {
+    this.pendingVoteEditEntry = null;
+    this.voteEditInput = '';
+    this.voteEditError = null;
+    this.cdr.markForCheck();
+  }
+
+  saveVoteEdit(): void {
+    const entry = this.pendingVoteEditEntry;
+    if (!entry || this.voteEditBusy) {
+      return;
+    }
+    const parsed = parseVoteCountInput(this.voteEditInput);
+    if (!parsed.valid) {
+      this.voteEditError = parsed.message;
+      this.cdr.markForCheck();
+      return;
+    }
+    this.voteEditBusy = true;
+    this.voteEditError = null;
+    this.queuePanelError = null;
+    this.queueAdmin.setVoteCount(entry.id, parsed.value).subscribe({
+      next: state => {
+        this.voteEditBusy = false;
+        this.pendingVoteEditEntry = null;
+        this.voteEditInput = '';
+        this.displayState.applyState(state);
+        this.loadActiveQueue();
+        this.cdr.markForCheck();
+      },
+      error: err => {
+        this.voteEditBusy = false;
+        if (err?.status === 422) {
+          this.voteEditError = 'El valor de votos no es válido.';
+        } else {
+          this.voteEditError = this.mapQueueControlError(err);
+        }
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  loadStats(): void {
+    this.statsLoading = true;
+    this.statsError = null;
+    this.adminStats.getStats().subscribe({
+      next: stats => {
+        this.statsSnapshot = stats;
+        this.statsLoading = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.statsLoading = false;
+        this.statsError = 'No se pudieron cargar las estadísticas.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  statsParticipantLabel(item: { display_name: string }): string {
+    return participantDisplayLabel(item as Parameters<typeof participantDisplayLabel>[0]);
+  }
+
+  moderationBadge(): string {
+    const count = this.pending().length;
+    return `${count} pendiente${count === 1 ? '' : 's'}`;
+  }
+
+  historyBadge(): string {
+    return `${this.historyTotalAll} entrada${this.historyTotalAll === 1 ? '' : 's'}`;
+  }
+
+  refreshHistoryTotalAll(): void {
+    this.queueAdmin.getHistory({ page: 1, page_size: 1 }).subscribe({
+      next: res => {
+        this.historyTotalAll = res.total;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
   refreshHistory(): void {
     this.historyLoading = true;
     this.historyError = null;
@@ -475,6 +801,7 @@ export class AdminComponent implements OnInit, OnDestroy {
         this.requeueBusy = false;
         this.pendingRequeueId = null;
         this.refreshHistory();
+        this.refreshHistoryTotalAll();
         this.cdr.markForCheck();
       },
       error: err => {
@@ -488,6 +815,44 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   historyStatusLabel(status: string): string {
     return status === 'played' ? 'Reproducida' : status === 'rejected' ? 'Rechazada' : status;
+  }
+
+  requestClearHistory(): void {
+    if (this.historyTotalAll === 0 || this.clearHistoryBusy) {
+      return;
+    }
+    this.pendingClearHistory = true;
+    this.cdr.markForCheck();
+  }
+
+  cancelClearHistory(): void {
+    this.pendingClearHistory = false;
+    this.cdr.markForCheck();
+  }
+
+  confirmClearHistory(): void {
+    if (this.clearHistoryBusy) {
+      return;
+    }
+    this.clearHistoryBusy = true;
+    this.historyError = null;
+    this.queueAdmin.clearHistory().subscribe({
+      next: () => {
+        this.clearHistoryBusy = false;
+        this.pendingClearHistory = false;
+        this.historyEntries = [];
+        this.historyTotal = 0;
+        this.historyTotalAll = 0;
+        this.historyPage = 1;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.clearHistoryBusy = false;
+        this.pendingClearHistory = false;
+        this.historyError = 'No se pudo vaciar el historial.';
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   sourceLabel(source: string): string {
@@ -945,6 +1310,29 @@ export class AdminComponent implements OnInit, OnDestroy {
         return 'Esta entrada ya no se puede moderar.';
       default:
         return 'No se pudo completar la acción de moderación.';
+    }
+  }
+
+  private mapQueueControlError(err: { error?: { detail?: string }; status?: number }): string {
+    const detail = err.error?.detail;
+    switch (detail) {
+      case 'queue is full':
+        return 'La cola está llena (100 canciones).';
+      case 'video already in queue':
+        return 'Ese vídeo ya está en la cola activa.';
+      case 'nothing to advance':
+        return 'No hay nada que reproducir ni saltar.';
+      case 'queue entry not found':
+        return 'La entrada ya no existe en la cola.';
+      case 'entry not active':
+        return 'La entrada ya no está en la cola activa.';
+      case 'invalid status':
+        return 'Esta entrada no se puede modificar en la cola activa.';
+      default:
+        if (err.status === 422) {
+          return 'Los datos enviados no son válidos.';
+        }
+        return 'No se pudo completar la acción en la cola de reproducción.';
     }
   }
 }

@@ -5,5 +5,5 @@ alwaysApply: true
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/020-fill-queue-from-reserve/plan.md`
+`specs/024-admin-queue-control/plan.md`
 <!-- SPECKIT END -->

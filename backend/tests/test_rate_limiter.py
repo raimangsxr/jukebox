@@ -1,31 +1,25 @@
-"""Search rate-limiter eviction (010, FR-010)."""
+"""Search rate-limiter DB-backed limits (022)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from uuid import uuid4
 
+from app.models import Participant
 from app.services import search_rate_limiter as rl
 
 
-def test_expired_buckets_are_evicted():
-    rl.reset_for_tests()
-    past = datetime(2020, 1, 1, tzinfo=timezone.utc)
-    assert rl.check_and_record("ghost", now=past) is True
-    assert "ghost" in rl._timestamps
+def test_limit_enforced_within_window(db_session):
+    participant = Participant(id=str(uuid4()), display_name="p1")
+    db_session.add(participant)
+    db_session.commit()
 
-    # Drive enough later calls to trigger a sweep; the idle "ghost" bucket
-    # (window fully expired) must be dropped so memory stays bounded.
-    future = past + timedelta(days=1)
-    for i in range(rl._SWEEP_EVERY):
-        rl.check_and_record(f"live-{i}", now=future)
-
-    assert "ghost" not in rl._timestamps
-    rl.reset_for_tests()
-
-
-def test_limit_still_enforced_within_window():
-    rl.reset_for_tests()
     now = datetime(2021, 6, 1, 12, 0, tzinfo=timezone.utc)
     limit = rl._limit()
     for _ in range(limit):
-        assert rl.check_and_record("p1", now=now) is True
-    assert rl.check_and_record("p1", now=now) is False
+        assert rl.can_search(db_session, participant.id, now=now) is True
+        rl.record_search(db_session, participant.id, now=now)
+        db_session.commit()
+    assert rl.can_search(db_session, participant.id, now=now) is False
+
+
+def test_reset_for_tests_is_noop():
     rl.reset_for_tests()

@@ -117,17 +117,19 @@ def test_operator_cannot_vote_without_participant_session(authed_client, queued_
 def test_window_expiry_allows_vote_after_rollover(
     dev_participant_client, queued_entry, second_queued_entry, db_session
 ):
+    from app.models import Participant
+
     participant_id = dev_participant_client.get("/api/participant/me").json()["participant"]["id"]
     assert _vote(dev_participant_client, queued_entry.id).status_code == 201
     assert _vote(dev_participant_client, second_queued_entry.id).status_code == 201
 
-    old_time = datetime.now(timezone.utc) - timedelta(minutes=11)
-    for vote in db_session.query(Vote).filter(Vote.participant_id == participant_id).all():
-        vote.created_at = old_time
+    participant = db_session.get(Participant, participant_id)
+    participant.votes_quota_reset_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     db_session.commit()
 
     state = dev_participant_client.get("/api/participant/state").json()
     assert state["votes_remaining"] == 2
+    assert state["votes_quota_reset_at"] is None
 
     response = _vote(dev_participant_client, queued_entry.id)
     assert response.status_code == 201

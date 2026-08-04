@@ -12,7 +12,7 @@
 
 ## Active SDD work
 
-No active change. Last completed: **020-fill-queue-from-reserve** (implemented) — auto-inject filler when queued empty while playing; duplicate skip removes reserve row; event-driven triggers.
+No active change. Last completed: **024-admin-queue-control** (implemented) — Admin Cola de reproducción panel; `GET/DELETE /api/queue/active`; play-now, vote-count, delete; Iniciar/Saltar moved from Moderación.
 
 To start a new feature: `/speckit.specify` and set `active.change` in `specs/manifest.yml`.
 

@@ -10,6 +10,7 @@ from .config import get_settings
 from .database import SessionLocal
 from .middleware import FrameAncestorsMiddleware
 from .routers import (
+    admin_stats,
     auth,
     auth_google,
     display,
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(display.router)
     app.include_router(event_config.router)
     app.include_router(queue.router)
+    app.include_router(admin_stats.router)
     app.include_router(filler_reserve.router)
     app.include_router(participant.router)
     app.include_router(votes.router)

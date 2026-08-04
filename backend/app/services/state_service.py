@@ -91,7 +91,8 @@ def _participant_limits_from_settings() -> ParticipantLimitsRead:
 def build_participant_state_response(
     db: Session, participant_id: str
 ) -> ParticipantStateResponse:
-    from .vote_service import votes_remaining as _votes_remaining
+    from .search_rate_limiter import search_limit_state
+    from .vote_service import vote_limit_state
 
     runtime = get_or_create_runtime(db)
     config = db.get(EventConfig, EVENT_CONFIG_SINGLETON_ID)
@@ -102,11 +103,18 @@ def build_participant_state_response(
     queue = get_all_queued(db)
 
     limits = _participant_limits_from_settings()
+    votes_rem, votes_reset_at = vote_limit_state(db, participant_id)
+    searches_rem, searches_reset_at = search_limit_state(db, participant_id)
+    db.commit()
+
     return ParticipantStateResponse(
         revision=runtime.revision,
         now_playing=_entry_to_read(now_playing) if now_playing else None,
         queue=[_entry_to_read(e) for e in queue],
-        votes_remaining=_votes_remaining(db, participant_id),
+        votes_remaining=votes_rem,
+        searches_remaining=searches_rem,
+        votes_quota_reset_at=votes_reset_at,
+        searches_quota_reset_at=searches_reset_at,
         max_pending_submissions=limits.max_pending_submissions,
         max_searches_10_minutes=limits.max_searches_10_minutes,
         max_votes_10_minutes=limits.max_votes_10_minutes,

@@ -114,6 +114,20 @@ class PendingQueueEntryRead(QueueEntryRead):
     submitted_by_display_name: str | None = None
 
 
+class ActiveQueueEntryRead(QueueEntryRead):
+    submitted_by_display_name: str | None = None
+    source: QueueEntrySourceLiteral
+
+
+class ActiveQueueListResponse(BaseModel):
+    now_playing: ActiveQueueEntryRead | None = None
+    queued: list[ActiveQueueEntryRead] = Field(default_factory=list)
+
+
+class VoteCountUpdateRequest(BaseModel):
+    vote_count: int = Field(ge=0)
+
+
 class ParticipantLimitsRead(BaseModel):
     max_pending_submissions: int
     max_searches_10_minutes: int
@@ -246,6 +260,9 @@ class ParticipantStateResponse(BaseModel):
     now_playing: QueueEntryRead | None = None
     queue: list[QueueEntryRead]
     votes_remaining: int
+    searches_remaining: int
+    votes_quota_reset_at: datetime | None = None
+    searches_quota_reset_at: datetime | None = None
     max_pending_submissions: int
     max_searches_10_minutes: int
     max_votes_10_minutes: int
@@ -313,3 +330,34 @@ class ApiKeyUsageListResponse(BaseModel):
     daily_limit: int
     quota_day: str
     next_reset_at: str
+
+
+class QueueStatusCounts(BaseModel):
+    pending_review: int
+    queued: int
+    playing: int
+    played: int
+    rejected: int
+
+
+class ParticipantRankingItem(BaseModel):
+    participant_id: str
+    display_name: str
+    count: int
+
+
+class SongRankingItem(BaseModel):
+    youtube_video_id: str
+    title: str
+    vote_count: int
+
+
+class AdminStatsResponse(BaseModel):
+    participants_active_count: int
+    total_submissions: int
+    total_votes_cast: int
+    distinct_voted_songs_count: int
+    queue_counts: QueueStatusCounts
+    top_submitters: list[ParticipantRankingItem]
+    top_voters: list[ParticipantRankingItem]
+    top_songs: list[SongRankingItem]
